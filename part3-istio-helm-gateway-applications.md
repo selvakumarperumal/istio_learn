@@ -1,2071 +1,991 @@
-# Building Custom Istio Helm Charts from Scratch
-## Part 3: Gateway Chart, Applications & Production Patterns
+# Istio Service Mesh with Helm: Complete Beginner's Guide
+## Part 3: Gateway, Traffic Management & Sample Application
 
 ---
 
-## Table of Contents - Part 3
-1. [Gateway Chart](#gateway-chart)
-2. [Complete Bookstore Application](#complete-bookstore-application)
-3. [Traffic Management Patterns](#traffic-management-patterns)
-4. [Security Configurations](#security-configurations)
-5. [Observability](#observability)
-6. [Production Deployment](#production-deployment)
-7. [Multi-Environment Setup](#multi-environment-setup)
-8. [Troubleshooting Guide](#troubleshooting-guide)
+## 📚 Table of Contents
+
+1. [Understanding Gateways](#understanding-gateways)
+2. [Installing Istio Gateway with Helm](#installing-istio-gateway-with-helm)
+3. [Deploying a Sample Application](#deploying-a-sample-application)
+4. [Traffic Management](#traffic-management)
+5. [Security with mTLS](#security-with-mtls)
+6. [Complete Working Example](#complete-working-example)
+7. [Verification and Testing](#verification-and-testing)
+8. [Cleanup](#cleanup)
 
 ---
 
-## Gateway Chart
+## Understanding Gateways
 
-### Gateway Overview
+### What is an Istio Gateway?
 
-Gateways are specialized Envoy proxies deployed at the edge of the mesh to handle ingress and egress traffic.
-
-```
-┌──────────────────────────────────────────────────────────┐
-│                    Gateway Architecture                   │
-└──────────────────────────────────────────────────────────┘
-
-External Traffic                        Internal Traffic
-     │                                        │
-     ▼                                        ▼
-┌─────────────────┐                  ┌──────────────────┐
-│ Ingress Gateway │                  │ Egress Gateway   │
-│  LoadBalancer   │                  │   ClusterIP      │
-│   :80, :443     │                  │    :443          │
-└────────┬────────┘                  └────────┬─────────┘
-         │                                    │
-         │ TLS Termination                   │ TLS Origination
-         │ Virtual Host Routing              │ Access Control
-         │                                    │
-         ▼                                    ▼
-    ┌─────────────────────────────────────────────────┐
-    │            Mesh Internal Services               │
-    │  ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐        │
-    │  │App-A │  │App-B │  │App-C │  │App-D │        │
-    │  └──────┘  └──────┘  └──────┘  └──────┘        │
-    └─────────────────────────────────────────────────┘
-```
-
-### Chart Structure
+An Istio **Gateway** is the entry point for traffic entering or leaving your service mesh:
 
 ```
-charts/istio-gateway/
-├── Chart.yaml
-├── values.yaml
-├── values-ingress.yaml
-├── values-egress.yaml
-├── README.md
-├── templates/
-│   ├── _helpers.tpl
-│   ├── NOTES.txt
-│   ├── namespace.yaml
-│   ├── serviceaccount.yaml
-│   ├── role.yaml
-│   ├── rolebinding.yaml
-│   ├── deployment.yaml
-│   ├── service.yaml
-│   ├── horizontalpodautoscaler.yaml
-│   ├── poddisruptionbudget.yaml
-│   └── networkpolicy.yaml
-└── tests/
-    └── test-gateway.yaml
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         INTERNET TRAFFIC                                 │
+└───────────────────────────────────┬─────────────────────────────────────┘
+                                    │
+                                    ▼
+        ┌───────────────────────────────────────────────────────┐
+        │             ISTIO INGRESS GATEWAY                      │
+        │                                                        │
+        │   🌐 LoadBalancer Service (External IP)               │
+        │   📍 Ports: 80 (HTTP), 443 (HTTPS)                    │
+        │   🔧 Runs Envoy proxy                                 │
+        │                                                        │
+        │   Responsibilities:                                    │
+        │   ✓ Accepts external traffic                          │
+        │   ✓ TLS termination                                   │
+        │   ✓ Host-based routing                                │
+        │   ✓ Send traffic to VirtualServices                   │
+        │                                                        │
+        └───────────────────────────────┬───────────────────────┘
+                                        │
+                                        ▼
+        ┌───────────────────────────────────────────────────────┐
+        │                   SERVICE MESH                         │
+        │                                                        │
+        │   ┌─────────┐   ┌─────────┐   ┌─────────┐            │
+        │   │ App A   │   │ App B   │   │ App C   │            │
+        │   │ +Envoy  │◀─▶│ +Envoy  │◀─▶│ +Envoy  │            │
+        │   └─────────┘   └─────────┘   └─────────┘            │
+        │                                                        │
+        └────────────────────────────────────────────────────────┘
 ```
 
-### Chart.yaml
+### Gateway vs Kubernetes Ingress
 
-```yaml
-# charts/istio-gateway/Chart.yaml
-apiVersion: v2
-name: istio-gateway
-description: |
-  Istio Gateway - Ingress and Egress gateway for managing
-  traffic entering and leaving the service mesh.
+| Feature | K8s Ingress | Istio Gateway |
+|---------|------------|---------------|
+| Layer | L7 only | L4-L7 |
+| TLS | Basic | Advanced (mTLS, SNI) |
+| Traffic Splitting | Limited | Full control |
+| Routing | Path/Host based | + Headers, weights, etc |
+| Integration | Ingress Controller | Istio mesh |
+| Config Flexibility | Limited | Extensive |
 
-type: application
-version: 1.0.0
-appVersion: "1.21.0"
+### How Gateway + VirtualService Work Together
 
-keywords:
-  - istio
-  - gateway
-  - ingress
-  - egress
-  - load-balancer
-
-home: https://istio.io
-sources:
-  - https://github.com/istio/istio
-
-maintainers:
-  - name: Platform Team
-    email: platform@yourcompany.com
-```
-
-### values.yaml
-
-```yaml
-# charts/istio-gateway/values.yaml
-
-# Gateway type: ingress or egress
-gatewayType: ingress
-
-# Gateway name
-name: istio-ingressgateway
-
-# Namespace for gateway
-namespace: istio-ingress
-
-# Global settings
-global:
-  hub: docker.io/istio
-  tag: 1.21.0
-  imagePullPolicy: IfNotPresent
-  imagePullSecrets: []
-
-# ===== DEPLOYMENT =====
-replicaCount: 3
-
-image:
-  repository: proxyv2
-  tag: ""  # Uses global.tag if not set
-  pullPolicy: ""  # Uses global.imagePullPolicy if not set
-
-# ===== SERVICE =====
-service:
-  type: LoadBalancer
-  # For cloud providers that support annotations
-  annotations: {}
-  # Example AWS annotations:
-  # service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
-  # service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
-  # Example GCP annotations:
-  # cloud.google.com/load-balancer-type: "Internal"
-  
-  loadBalancerIP: ""
-  loadBalancerSourceRanges: []
-  # - "10.0.0.0/8"
-  
-  externalTrafficPolicy: Local  # or Cluster
-  sessionAffinity: None  # or ClientIP
-  
-  ports:
-  - name: status-port
-    port: 15021
-    targetPort: 15021
-    protocol: TCP
-  - name: http2
-    port: 80
-    targetPort: 8080
-    protocol: TCP
-    nodePort: 30080  # Optional for NodePort
-  - name: https
-    port: 443
-    targetPort: 8443
-    protocol: TCP
-    nodePort: 30443  # Optional for NodePort
-  - name: tcp
-    port: 31400
-    targetPort: 31400
-    protocol: TCP
-  - name: tls
-    port: 15443
-    targetPort: 15443
-    protocol: TCP
-
-# ===== RESOURCES =====
-resources:
-  requests:
-    cpu: 500m
-    memory: 512Mi
-  limits:
-    cpu: 2000m
-    memory: 2Gi
-
-# ===== AUTOSCALING =====
-autoscaling:
-  enabled: true
-  minReplicas: 3
-  maxReplicas: 10
-  targetCPUUtilizationPercentage: 80
-  targetMemoryUtilizationPercentage: 80
-
-# ===== POD DISRUPTION BUDGET =====
-podDisruptionBudget:
-  enabled: true
-  minAvailable: 2
-  # maxUnavailable: 1
-
-# ===== SECURITY CONTEXT =====
-podSecurityContext:
-  runAsUser: 1337
-  runAsGroup: 1337
-  runAsNonRoot: true
-  fsGroup: 1337
-
-securityContext:
-  allowPrivilegeEscalation: false
-  capabilities:
-    drop:
-    - ALL
-  privileged: false
-  readOnlyRootFilesystem: true
-  runAsNonRoot: true
-  runAsUser: 1337
-  runAsGroup: 1337
-
-# ===== POD CONFIGURATION =====
-podAnnotations:
-  prometheus.io/port: "15020"
-  prometheus.io/scrape: "true"
-  prometheus.io/path: "/stats/prometheus"
-  inject.istio.io/templates: "gateway"
-
-nodeSelector: {}
-tolerations: []
-affinity: {}
-
-# ===== SERVICE ACCOUNT =====
-serviceAccount:
-  create: true
-  name: ""
-  annotations: {}
-
-# ===== ENVIRONMENT VARIABLES =====
-env:
-  # Istio meta router mode for gateways
-  ISTIO_META_ROUTER_MODE: "sni-dnat"
-  ISTIO_META_REQUESTED_NETWORK_VIEW: ""
-  ISTIO_META_UNPRIVILEGED_POD: "true"
-
-# ===== NETWORK POLICY =====
-networkPolicy:
-  enabled: false
-  # Ingress rules
-  ingress: []
-  # - from:
-  #   - namespaceSelector:
-  #       matchLabels:
-  #         name: production
-  # Egress rules  
-  egress: []
-  # - to:
-  #   - namespaceSelector: {}
-```
-
-### Deployment Template
-
-```yaml
-# charts/istio-gateway/templates/deployment.yaml
-
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: {{ include "istio-gateway.fullname" . }}
-  namespace: {{ .Values.namespace }}
-  labels:
-    {{- include "istio-gateway.labels" . | nindent 4 }}
-spec:
-  replicas: {{ .Values.replicaCount }}
-  
-  strategy:
-    rollingUpdate:
-      maxSurge: 100%
-      maxUnavailable: 25%
-  
-  selector:
-    matchLabels:
-      {{- include "istio-gateway.selectorLabels" . | nindent 6 }}
-  
-  template:
-    metadata:
-      labels:
-        {{- include "istio-gateway.selectorLabels" . | nindent 8 }}
-        sidecar.istio.io/inject: "false"
-      annotations:
-        {{- toYaml .Values.podAnnotations | nindent 8 }}
+```mermaid
+graph TD
+    subgraph "External"
+        Client[Client Request<br/>bookstore.com/api/books]
+    end
     
-    spec:
-      serviceAccountName: {{ include "istio-gateway.serviceAccountName" . }}
-      
-      {{- with .Values.podSecurityContext }}
-      securityContext:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      
-      containers:
-      - name: istio-proxy
-        image: "{{ .Values.global.hub }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Values.global.tag }}"
-        imagePullPolicy: {{ .Values.image.pullPolicy | default .Values.global.imagePullPolicy }}
-        
-        ports:
-        {{- range .Values.service.ports }}
-        - containerPort: {{ .targetPort }}
-          protocol: {{ .protocol }}
-          name: {{ .name }}
-        {{- end }}
-        - containerPort: 15090
-          protocol: TCP
-          name: http-envoy-prom
-        
-        env:
-        {{- range $key, $value := .Values.env }}
-        - name: {{ $key }}
-          value: {{ $value | quote }}
-        {{- end }}
-        - name: NODE_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: spec.nodeName
-        - name: POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        - name: POD_NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
-        - name: INSTANCE_IP
-          valueFrom:
-            fieldRef:
-              fieldPath: status.podIP
-        - name: SERVICE_ACCOUNT
-          valueFrom:
-            fieldRef:
-              fieldPath: spec.serviceAccountName
-        
-        readinessProbe:
-          httpGet:
-            path: /healthz/ready
-            port: 15021
-            scheme: HTTP
-          initialDelaySeconds: 1
-          periodSeconds: 2
-          timeoutSeconds: 1
-          successThreshold: 1
-          failureThreshold: 30
-        
-        resources:
-          {{- toYaml .Values.resources | nindent 10 }}
-        
-        {{- with .Values.securityContext }}
-        securityContext:
-          {{- toYaml . | nindent 10 }}
-        {{- end }}
-        
-        volumeMounts:
-        - name: workload-socket
-          mountPath: /var/run/secrets/workload-spiffe-uds
-        - name: workload-certs
-          mountPath: /var/run/secrets/workload-spiffe-credentials
-        - name: istio-envoy
-          mountPath: /etc/istio/proxy
-        - name: config-volume
-          mountPath: /etc/istio/config
-        - mountPath: /var/run/secrets/tokens
-          name: istio-token
-        - name: istio-data
-          mountPath: /var/lib/istio/data
-        - name: podinfo
-          mountPath: /etc/istio/pod
-        - name: ingressgateway-certs
-          mountPath: "/etc/istio/ingressgateway-certs"
-          readOnly: true
-        - name: ingressgateway-ca-certs
-          mountPath: "/etc/istio/ingressgateway-ca-certs"
-          readOnly: true
-      
-      volumes:
-      - name: workload-socket
-        emptyDir: {}
-      - name: workload-certs
-        emptyDir: {}
-      - name: istio-envoy
-        emptyDir: {}
-      - name: istio-data
-        emptyDir: {}
-      - name: istio-token
-        projected:
-          sources:
-          - serviceAccountToken:
-              path: istio-token
-              expirationSeconds: 43200
-              audience: istio-ca
-      - name: config-volume
-        configMap:
-          name: istio
-          optional: true
-      - name: podinfo
-        downwardAPI:
-          items:
-          - path: "labels"
-            fieldRef:
-              fieldPath: metadata.labels
-          - path: "annotations"
-            fieldRef:
-              fieldPath: metadata.annotations
-      - name: ingressgateway-certs
-        secret:
-          secretName: "istio-ingressgateway-certs"
-          optional: true
-      - name: ingressgateway-ca-certs
-        secret:
-          secretName: "istio-ingressgateway-ca-certs"
-          optional: true
-      
-      {{- with .Values.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      
-      {{- with .Values.affinity }}
-      affinity:
-        {{- toYaml . | nindent 8 }}
-      {{- else }}
-      affinity:
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 100
-            podAffinityTerm:
-              labelSelector:
-                matchLabels:
-                  {{- include "istio-gateway.selectorLabels" . | nindent 18 }}
-              topologyKey: kubernetes.io/hostname
-      {{- end }}
-      
-      {{- with .Values.tolerations }}
-      tolerations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      
-      {{- with .Values.global.imagePullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+    subgraph "Gateway"
+        GW[Gateway Resource<br/>Accepts: bookstore.com]
+    end
+    
+    subgraph "Routing"
+        VS[VirtualService<br/>Route: /api/books → books-svc]
+    end
+    
+    subgraph "Services"
+        SVC[books-service<br/>Port 8080]
+    end
+    
+    Client --> GW
+    GW --> VS
+    VS --> SVC
 ```
 
-### Service Template
+**Think of it like:**
+- **Gateway** = "What doors are open?" (hosts, ports, TLS)
+- **VirtualService** = "Where do visitors go?" (routing rules)
 
-```yaml
-# charts/istio-gateway/templates/service.yaml
+---
 
-apiVersion: v1
-kind: Service
-metadata:
-  name: {{ include "istio-gateway.fullname" . }}
-  namespace: {{ .Values.namespace }}
-  labels:
-    {{- include "istio-gateway.labels" . | nindent 4 }}
-  {{- with .Values.service.annotations }}
-  annotations:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
-spec:
-  type: {{ .Values.service.type }}
-  
-  {{- if .Values.service.loadBalancerIP }}
-  loadBalancerIP: {{ .Values.service.loadBalancerIP }}
-  {{- end }}
-  
-  {{- if .Values.service.loadBalancerSourceRanges }}
-  loadBalancerSourceRanges:
-    {{- toYaml .Values.service.loadBalancerSourceRanges | nindent 4 }}
-  {{- end }}
-  
-  {{- if .Values.service.externalTrafficPolicy }}
-  externalTrafficPolicy: {{ .Values.service.externalTrafficPolicy }}
-  {{- end }}
-  
-  {{- if .Values.service.sessionAffinity }}
-  sessionAffinity: {{ .Values.service.sessionAffinity }}
-  {{- end }}
-  
-  selector:
-    {{- include "istio-gateway.selectorLabels" . | nindent 4 }}
-  
-  ports:
-    {{- range .Values.service.ports }}
-    - port: {{ .port }}
-      targetPort: {{ .targetPort }}
-      protocol: {{ .protocol }}
-      name: {{ .name }}
-      {{- if and (eq $.Values.service.type "NodePort") .nodePort }}
-      nodePort: {{ .nodePort }}
-      {{- end }}
-    {{- end }}
+## Installing Istio Gateway with Helm
+
+### Prerequisites Check
+
+```bash
+# Verify previous components are installed
+helm list -n istio-system
+
+# Expected:
+# NAME        NAMESPACE     STATUS    CHART           APP VERSION
+# istio-base  istio-system  deployed  base-1.21.0     1.21.0
+# istiod      istio-system  deployed  istiod-1.21.0   1.21.0
 ```
 
-### HorizontalPodAutoscaler
+### Step 1: Create Gateway Namespace
 
-```yaml
-# charts/istio-gateway/templates/horizontalpodautoscaler.yaml
+```bash
+# Create namespace for the gateway
+kubectl create namespace istio-ingress
 
-{{- if .Values.autoscaling.enabled }}
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: {{ include "istio-gateway.fullname" . }}
-  namespace: {{ .Values.namespace }}
-  labels:
-    {{- include "istio-gateway.labels" . | nindent 4 }}
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: {{ include "istio-gateway.fullname" . }}
-  minReplicas: {{ .Values.autoscaling.minReplicas }}
-  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
-  {{- if .Values.autoscaling.targetMemoryUtilizationPercentage }}
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
-  {{- end }}
-{{- end }}
+# Label for injection (optional but recommended)
+kubectl label namespace istio-ingress istio-injection=enabled
 ```
 
-### PodDisruptionBudget
+### Step 2: Install Gateway
 
-```yaml
-# charts/istio-gateway/templates/poddisruptionbudget.yaml
+```bash
+# Install the ingress gateway
+helm install istio-ingressgateway istio/gateway \
+  --namespace istio-ingress \
+  --version 1.21.0 \
+  --wait
 
-{{- if .Values.podDisruptionBudget.enabled }}
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: {{ include "istio-gateway.fullname" . }}
-  namespace: {{ .Values.namespace }}
-  labels:
-    {{- include "istio-gateway.labels" . | nindent 4 }}
-spec:
-  selector:
-    matchLabels:
-      {{- include "istio-gateway.selectorLabels" . | nindent 6 }}
-  {{- if .Values.podDisruptionBudget.minAvailable }}
-  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
-  {{- end }}
-  {{- if .Values.podDisruptionBudget.maxUnavailable }}
-  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
-  {{- end }}
-{{- end }}
+# Check installation
+kubectl get pods -n istio-ingress
 ```
 
-### _helpers.tpl
+**Expected Output:**
+```
+NAME                                    READY   STATUS    RESTARTS   AGE
+istio-ingressgateway-xxxxx-xxxxx       1/1     Running   0          30s
+```
 
-```yaml
-# charts/istio-gateway/templates/_helpers.tpl
+### Step 3: Check Gateway Service
 
-{{- define "istio-gateway.name" -}}
-{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
-{{- end }}
+```bash
+# Get the gateway service
+kubectl get svc -n istio-ingress
 
-{{- define "istio-gateway.fullname" -}}
-{{- if .Values.fullnameOverride }}
-{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
-{{- else }}
-{{- $name := default .Values.name .Values.nameOverride }}
-{{- printf "%s" $name | trunc 63 | trimSuffix "-" }}
-{{- end }}
-{{- end }}
+# Expected output (Minikube):
+# NAME                   TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)
+# istio-ingressgateway   LoadBalancer   10.96.xxx.xxx   <pending>     15021,80,443
+```
 
-{{- define "istio-gateway.labels" -}}
-helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
-app.kubernetes.io/name: {{ include "istio-gateway.name" . }}
-app.kubernetes.io/instance: {{ .Release.Name }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
-app.kubernetes.io/managed-by: {{ .Release.Service }}
-app: {{ .Values.name }}
-istio: {{ .Values.gatewayType }}gateway
-{{- end }}
+### Step 4: Get Gateway URL (Minikube)
 
-{{- define "istio-gateway.selectorLabels" -}}
-app: {{ .Values.name }}
-istio: {{ .Values.gatewayType }}gateway
-{{- end }}
+For Minikube, you need to get the gateway URL:
 
-{{- define "istio-gateway.serviceAccountName" -}}
-{{- if .Values.serviceAccount.create }}
-{{- default (include "istio-gateway.fullname" .) .Values.serviceAccount.name }}
-{{- else }}
-{{- default "default" .Values.serviceAccount.name }}
-{{- end }}
-{{- end }}
+```bash
+# Option 1: Use minikube tunnel (recommended)
+# Run this in a separate terminal
+minikube tunnel
+
+# Then get the external IP
+kubectl get svc -n istio-ingress istio-ingressgateway
+
+# Option 2: Use minikube service
+minikube service istio-ingressgateway -n istio-ingress --url
+```
+
+### Gateway Installation Summary
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   INSTALLATION PROGRESS                      │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│   ✅ Step 1: istio-base (CRDs)         ─ COMPLETED          │
+│   ✅ Step 2: istiod (Control Plane)    ─ COMPLETED          │
+│   ✅ Step 3: istio-gateway (Ingress)   ─ COMPLETED          │
+│   ⬜ Step 4: Your Application           ─ NEXT               │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Complete Bookstore Application
+## Deploying a Sample Application
 
-### Application Architecture
+### Using Istio's Bookinfo Application
 
-```
-┌───────────────────────────────────────────────────────────────┐
-│                   Bookstore Application                        │
-└───────────────────────────────────────────────────────────────┘
-
-                    Internet
-                        │
-                        ▼
-              ┌──────────────────┐
-              │ Ingress Gateway  │
-              │  LoadBalancer    │
-              │   80/443         │
-              └────────┬─────────┘
-                       │
-                       ▼
-              ┌──────────────────┐
-              │   Gateway CRD    │
-              │  bookstore.com   │
-              └────────┬─────────┘
-                       │
-                       ▼
-              ┌──────────────────┐
-              │ VirtualService   │
-              │  Route Rules     │
-              └────────┬─────────┘
-                       │
-      ┌────────────────┼────────────────┬───────────────┐
-      │                │                │               │
-      ▼                ▼                ▼               ▼
-┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
-│ Frontend │    │  Books   │    │ Reviews  │    │ Ratings  │
-│  React   │───►│   API    │◄───│   API    │◄───│   API    │
-│   Pod    │    │   Pod    │    │  v1/v2   │    │   Pod    │
-└──────────┘    └──────────┘    └─────┬────┘    └──────────┘
-                                      │
-                               Canary: 90% v1
-                                      10% v2
-```
-
-### Chart Structure
+Istio provides a sample "Bookinfo" application that's perfect for learning:
 
 ```
-charts/bookstore/
-├── Chart.yaml
-├── values.yaml
-├── values-dev.yaml
-├── values-staging.yaml
-├── values-prod.yaml
-├── README.md
-├── templates/
-│   ├── _helpers.tpl
-│   ├── NOTES.txt
-│   ├── namespace.yaml
-│   │
-│   ├── deployments/
-│   │   ├── frontend.yaml
-│   │   ├── books.yaml
-│   │   ├── reviews-v1.yaml
-│   │   ├── reviews-v2.yaml
-│   │   └── ratings.yaml
-│   │
-│   ├── services/
-│   │   ├── frontend.yaml
-│   │   ├── books.yaml
-│   │   ├── reviews.yaml
-│   │   └── ratings.yaml
-│   │
-│   ├── istio/
-│   │   ├── gateway.yaml
-│   │   ├── virtualservice.yaml
-│   │   ├── destinationrule-books.yaml
-│   │   ├── destinationrule-reviews.yaml
-│   │   └── peerauthentication.yaml
-│   │
-│   └── monitoring/
-│       ├── servicemonitor.yaml
-│       └── prometheusrule.yaml
-│
-└── tests/
-    └── test-connectivity.yaml
+┌─────────────────────────────────────────────────────────────────────────┐
+│                       BOOKINFO APPLICATION                               │
+└─────────────────────────────────────────────────────────────────────────┘
+
+                              ┌──────────────────┐
+                              │  Ingress Gateway │
+                              └────────┬─────────┘
+                                       │
+                                       ▼
+                              ┌──────────────────┐
+                              │   productpage    │
+                              │   (Python)       │
+                              └────────┬─────────┘
+                                       │
+                    ┌──────────────────┼──────────────────┐
+                    │                  │                  │
+                    ▼                  ▼                  ▼
+           ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
+           │   details    │   │   reviews    │   │   ratings    │
+           │   (Ruby)     │   │   (Java)     │   │   (Node.js)  │
+           └──────────────┘   │              │   └──────────────┘
+                              │  v1 v2 v3    │
+                              └──────────────┘
+                              
+   reviews-v1: No ratings (no stars)
+   reviews-v2: Black stars
+   reviews-v3: Red stars
 ```
 
-### Chart.yaml
+### Step 1: Create Application Namespace
+
+```bash
+# Create namespace
+kubectl create namespace bookinfo
+
+# Enable sidecar injection
+kubectl label namespace bookinfo istio-injection=enabled
+
+# Verify label
+kubectl get namespace bookinfo --show-labels
+```
+
+### Step 2: Deploy the Application
+
+```bash
+# Download and apply Bookinfo manifests
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.21/samples/bookinfo/platform/kube/bookinfo.yaml -n bookinfo
+
+# Wait for pods to be ready
+kubectl get pods -n bookinfo -w
+```
+
+**Wait until all pods show `2/2` (app + sidecar):**
+
+```
+NAME                              READY   STATUS    RESTARTS   AGE
+details-v1-xxxxx-xxxxx           2/2     Running   0          2m
+productpage-v1-xxxxx-xxxxx       2/2     Running   0          2m
+ratings-v1-xxxxx-xxxxx           2/2     Running   0          2m
+reviews-v1-xxxxx-xxxxx           2/2     Running   0          2m
+reviews-v2-xxxxx-xxxxx           2/2     Running   0          2m
+reviews-v3-xxxxx-xxxxx           2/2     Running   0          2m
+```
+
+### Step 3: Create Gateway Resource
 
 ```yaml
-# charts/bookstore/Chart.yaml
-apiVersion: v2
-name: bookstore
-description: |
-  Complete microservices bookstore application with Istio service mesh.
-  Demonstrates traffic management, security, and observability features.
-
-type: application
-version: 1.0.0
-appVersion: "1.0"
-
-dependencies:
-  - name: istio-base
-    version: "1.0.0"
-    repository: "file://../istio-base"
-    condition: istio.base.enabled
-  - name: istiod
-    version: "1.0.0"
-    repository: "file://../istiod"
-    condition: istio.istiod.enabled
-
-keywords:
-  - microservices
-  - istio
-  - bookstore
-  - demo
-  - example
-
-maintainers:
-  - name: Platform Team
-```
-
-### values.yaml (Complete Application)
-
-```yaml
-# charts/bookstore/values.yaml
-
-# ===== NAMESPACE =====
-namespace: bookstore
-
-# ===== ISTIO DEPENDENCIES =====
-istio:
-  base:
-    enabled: false  # Install separately
-  istiod:
-    enabled: false  # Install separately
-  
-  # Enable sidecar injection
-  injection:
-    enabled: true
-  
-  # mTLS mode
-  mtls:
-    mode: STRICT  # STRICT, PERMISSIVE, DISABLE
-
-# ===== GATEWAY =====
-gateway:
-  enabled: true
-  hosts:
-    - bookstore.example.com
-    - www.bookstore.example.com
-  
-  tls:
-    enabled: true
-    secretName: bookstore-tls
-    # Create secret with:
-    # kubectl create secret tls bookstore-tls \
-    #   --cert=path/to/tls.crt \
-    #   --key=path/to/tls.key \
-    #   -n bookstore
-
-# ===== FRONTEND SERVICE =====
-frontend:
-  enabled: true
-  replicaCount: 2
-  
-  image:
-    repository: your-registry/bookstore-frontend
-    tag: "1.0.0"
-    pullPolicy: IfNotPresent
-  
-  service:
-    port: 80
-    targetPort: 3000
-  
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
-  
-  env:
-    - name: BOOKS_API_URL
-      value: "http://books"
-    - name: REVIEWS_API_URL
-      value: "http://reviews"
-
-# ===== BOOKS SERVICE =====
-books:
-  enabled: true
-  replicaCount: 2
-  
-  image:
-    repository: your-registry/books-service
-    tag: "1.0.0"
-    pullPolicy: IfNotPresent
-  
-  service:
-    port: 80
-    targetPort: 8080
-  
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
-  
-  env:
-    - name: DATABASE_URL
-      value: "postgresql://books-db:5432/books"
-    - name: LOG_LEVEL
-      value: "info"
-
-# ===== REVIEWS SERVICE (CANARY) =====
-reviews:
-  enabled: true
-  
-  # Version 1 (stable)
-  v1:
-    replicaCount: 3
-    image:
-      repository: your-registry/reviews-service
-      tag: "1.0.0"
-    weight: 90  # 90% traffic
-  
-  # Version 2 (canary)
-  v2:
-    replicaCount: 1
-    image:
-      repository: your-registry/reviews-service
-      tag: "2.0.0"
-    weight: 10  # 10% traffic
-  
-  service:
-    port: 80
-    targetPort: 8080
-  
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
-  
-  env:
-    - name: RATINGS_API_URL
-      value: "http://ratings"
-
-# ===== RATINGS SERVICE =====
-ratings:
-  enabled: true
-  replicaCount: 2
-  
-  image:
-    repository: your-registry/ratings-service
-    tag: "1.0.0"
-    pullPolicy: IfNotPresent
-  
-  service:
-    port: 80
-    targetPort: 8080
-  
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
-
-# ===== TRAFFIC MANAGEMENT =====
-trafficManagement:
-  # Retry settings
-  retries:
-    enabled: true
-    attempts: 3
-    perTryTimeout: 2s
-    retryOn: "5xx,reset,connect-failure,refused-stream"
-  
-  # Timeout settings
-  timeout: 10s
-  
-  # Circuit breaker
-  circuitBreaker:
-    enabled: true
-    maxConnections: 100
-    maxPendingRequests: 50
-    maxRequests: 100
-    consecutiveErrors: 5
-    interval: 30s
-    baseEjectionTime: 30s
-  
-  # Fault injection (testing)
-  faultInjection:
-    enabled: false
-    delay:
-      percentage: 10
-      fixedDelay: 5s
-    abort:
-      percentage: 5
-      httpStatus: 503
-
-# ===== MONITORING =====
-monitoring:
-  enabled: true
-  serviceMonitor:
-    enabled: true
-    interval: 15s
-  
-  prometheusRules:
-    enabled: true
-    # Alert when error rate > 5%
-    highErrorRate:
-      threshold: 5
-    # Alert when p95 latency > 1s
-    highLatency:
-      threshold: 1000
-
-# ===== GLOBAL IMAGE SETTINGS =====
-imagePullSecrets: []
-# - name: regcred
-```
-
-### Deployment Templates
-
-#### Frontend Deployment
-
-```yaml
-# charts/bookstore/templates/deployments/frontend.yaml
-
-{{- if .Values.frontend.enabled }}
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: frontend
-  namespace: {{ .Values.namespace }}
-  labels:
-    {{- include "bookstore.labels" . | nindent 4 }}
-    app: frontend
-    version: v1
-spec:
-  replicas: {{ .Values.frontend.replicaCount }}
-  selector:
-    matchLabels:
-      app: frontend
-      version: v1
-  template:
-    metadata:
-      labels:
-        app: frontend
-        version: v1
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "3000"
-        prometheus.io/path: "/metrics"
-    spec:
-      {{- with .Values.imagePullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      containers:
-      - name: frontend
-        image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}"
-        imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
-        ports:
-        - containerPort: {{ .Values.frontend.service.targetPort }}
-          name: http
-          protocol: TCP
-        env:
-        {{- range .Values.frontend.env }}
-        - name: {{ .name }}
-          value: {{ .value | quote }}
-        {{- end }}
-        resources:
-          {{- toYaml .Values.frontend.resources | nindent 10 }}
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: {{ .Values.frontend.service.targetPort }}
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /ready
-            port: {{ .Values.frontend.service.targetPort }}
-          initialDelaySeconds: 10
-          periodSeconds: 5
-{{- end }}
-```
-
-#### Reviews Deployment (with Canary)
-
-```yaml
-# charts/bookstore/templates/deployments/reviews-v1.yaml
-
-{{- if .Values.reviews.enabled }}
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: reviews-v1
-  namespace: {{ .Values.namespace }}
-  labels:
-    {{- include "bookstore.labels" . | nindent 4 }}
-    app: reviews
-    version: v1
-spec:
-  replicas: {{ .Values.reviews.v1.replicaCount }}
-  selector:
-    matchLabels:
-      app: reviews
-      version: v1
-  template:
-    metadata:
-      labels:
-        app: reviews
-        version: v1
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "8080"
-    spec:
-      containers:
-      - name: reviews
-        image: "{{ .Values.reviews.v1.image.repository }}:{{ .Values.reviews.v1.image.tag }}"
-        imagePullPolicy: IfNotPresent
-        ports:
-        - containerPort: {{ .Values.reviews.service.targetPort }}
-          name: http
-        env:
-        - name: SERVICE_VERSION
-          value: "v1"
-        {{- range .Values.reviews.env }}
-        - name: {{ .name }}
-          value: {{ .value | quote }}
-        {{- end }}
-        resources:
-          {{- toYaml .Values.reviews.resources | nindent 10 }}
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /ready
-            port: 8080
-          initialDelaySeconds: 10
-          periodSeconds: 5
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: reviews-v2
-  namespace: {{ .Values.namespace }}
-  labels:
-    {{- include "bookstore.labels" . | nindent 4 }}
-    app: reviews
-    version: v2
-spec:
-  replicas: {{ .Values.reviews.v2.replicaCount }}
-  selector:
-    matchLabels:
-      app: reviews
-      version: v2
-  template:
-    metadata:
-      labels:
-        app: reviews
-        version: v2
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "8080"
-    spec:
-      containers:
-      - name: reviews
-        image: "{{ .Values.reviews.v2.image.repository }}:{{ .Values.reviews.v2.image.tag }}"
-        imagePullPolicy: IfNotPresent
-        ports:
-        - containerPort: {{ .Values.reviews.service.targetPort }}
-          name: http
-        env:
-        - name: SERVICE_VERSION
-          value: "v2"
-        - name: ENABLE_NEW_FEATURES
-          value: "true"
-        {{- range .Values.reviews.env }}
-        - name: {{ .name }}
-          value: {{ .value | quote }}
-        {{- end }}
-        resources:
-          {{- toYaml .Values.reviews.resources | nindent 10 }}
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /ready
-            port: 8080
-          initialDelaySeconds: 10
-          periodSeconds: 5
-{{- end }}
-```
-
-### Service Templates
-
-```yaml
-# charts/bookstore/templates/services/reviews.yaml
-
-{{- if .Values.reviews.enabled }}
-apiVersion: v1
-kind: Service
-metadata:
-  name: reviews
-  namespace: {{ .Values.namespace }}
-  labels:
-    {{- include "bookstore.labels" . | nindent 4 }}
-    app: reviews
-spec:
-  type: ClusterIP
-  ports:
-  - port: {{ .Values.reviews.service.port }}
-    targetPort: {{ .Values.reviews.service.targetPort }}
-    protocol: TCP
-    name: http
-  selector:
-    app: reviews
-{{- end }}
-```
-
-### Istio Configuration Templates
-
-#### Gateway
-
-```yaml
-# charts/bookstore/templates/istio/gateway.yaml
-
-{{- if .Values.gateway.enabled }}
+# Save as bookinfo-gateway.yaml
 apiVersion: networking.istio.io/v1beta1
 kind: Gateway
 metadata:
-  name: bookstore-gateway
-  namespace: {{ .Values.namespace }}
-  labels:
-    {{- include "bookstore.labels" . | nindent 4 }}
+  name: bookinfo-gateway
+  namespace: bookinfo
 spec:
+  # Select the ingress gateway
   selector:
     istio: ingressgateway
   servers:
-  - port:
-      number: 80
-      name: http
-      protocol: HTTP
-    hosts:
-    {{- range .Values.gateway.hosts }}
-    - {{ . | quote }}
-    {{- end }}
-    {{- if .Values.gateway.tls.enabled }}
-    tls:
-      httpsRedirect: true
-  - port:
-      number: 443
-      name: https
-      protocol: HTTPS
-    tls:
-      mode: SIMPLE
-      credentialName: {{ .Values.gateway.tls.secretName }}
-    hosts:
-    {{- range .Values.gateway.hosts }}
-    - {{ . | quote }}
-    {{- end }}
-    {{- end }}
-{{- end }}
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - "*"  # Accept all hosts (for demo)
 ```
 
-#### VirtualService (Complete Routing)
+```bash
+# Apply the gateway
+kubectl apply -f bookinfo-gateway.yaml
+```
+
+### Step 4: Create VirtualService
 
 ```yaml
-# charts/bookstore/templates/istio/virtualservice.yaml
-
+# Save as bookinfo-virtualservice.yaml
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 metadata:
-  name: bookstore
-  namespace: {{ .Values.namespace }}
-  labels:
-    {{- include "bookstore.labels" . | nindent 4 }}
+  name: bookinfo
+  namespace: bookinfo
 spec:
+  # This VirtualService applies to the gateway
   hosts:
-  {{- range .Values.gateway.hosts }}
-  - {{ . | quote }}
-  {{- end }}
+    - "*"
   gateways:
-  - bookstore-gateway
+    - bookinfo-gateway
   http:
-  # ===== FRONTEND ROUTES =====
-  {{- if .Values.frontend.enabled }}
-  - match:
-    - uri:
-        prefix: /static/
-    - uri:
-        exact: /
-    route:
-    - destination:
-        host: frontend
-        port:
-          number: {{ .Values.frontend.service.port }}
-  {{- end }}
-  
-  # ===== BOOKS API ROUTES =====
-  {{- if .Values.books.enabled }}
-  - match:
-    - uri:
-        prefix: /api/books
-    rewrite:
-      uri: /books
-    route:
-    - destination:
-        host: books
-        port:
-          number: {{ .Values.books.service.port }}
-    {{- if .Values.trafficManagement.timeout }}
-    timeout: {{ .Values.trafficManagement.timeout }}
-    {{- end }}
-    {{- if .Values.trafficManagement.retries.enabled }}
-    retries:
-      attempts: {{ .Values.trafficManagement.retries.attempts }}
-      perTryTimeout: {{ .Values.trafficManagement.retries.perTryTimeout }}
-      retryOn: {{ .Values.trafficManagement.retries.retryOn }}
-    {{- end }}
-    {{- if .Values.trafficManagement.faultInjection.enabled }}
-    fault:
-      {{- if .Values.trafficManagement.faultInjection.delay }}
-      delay:
-        percentage:
-          value: {{ .Values.trafficManagement.faultInjection.delay.percentage }}
-        fixedDelay: {{ .Values.trafficManagement.faultInjection.delay.fixedDelay }}
-      {{- end }}
-      {{- if .Values.trafficManagement.faultInjection.abort }}
-      abort:
-        percentage:
-          value: {{ .Values.trafficManagement.faultInjection.abort.percentage }}
-        httpStatus: {{ .Values.trafficManagement.faultInjection.abort.httpStatus }}
-      {{- end }}
-    {{- end }}
-  {{- end }}
-  
-  # ===== REVIEWS API ROUTES (CANARY) =====
-  {{- if .Values.reviews.enabled }}
-  - match:
-    - uri:
-        prefix: /api/reviews
-    rewrite:
-      uri: /reviews
-    route:
-    - destination:
-        host: reviews
-        subset: v1
-        port:
-          number: {{ .Values.reviews.service.port }}
-      weight: {{ .Values.reviews.v1.weight }}
-    - destination:
-        host: reviews
-        subset: v2
-        port:
-          number: {{ .Values.reviews.service.port }}
-      weight: {{ .Values.reviews.v2.weight }}
-    {{- if .Values.trafficManagement.timeout }}
-    timeout: {{ .Values.trafficManagement.timeout }}
-    {{- end }}
-    {{- if .Values.trafficManagement.retries.enabled }}
-    retries:
-      attempts: {{ .Values.trafficManagement.retries.attempts }}
-      perTryTimeout: {{ .Values.trafficManagement.retries.perTryTimeout }}
-      retryOn: {{ .Values.trafficManagement.retries.retryOn }}
-    {{- end }}
-  {{- end }}
-  
-  # ===== RATINGS API ROUTES =====
-  {{- if .Values.ratings.enabled }}
-  - match:
-    - uri:
-        prefix: /api/ratings
-    rewrite:
-      uri: /ratings
-    route:
-    - destination:
-        host: ratings
-        port:
-          number: {{ .Values.ratings.service.port }}
-    timeout: 5s
-  {{- end }}
+    - match:
+        - uri:
+            exact: /productpage
+        - uri:
+            prefix: /static
+        - uri:
+            exact: /login
+        - uri:
+            exact: /logout
+        - uri:
+            prefix: /api/v1/products
+      route:
+        - destination:
+            host: productpage
+            port:
+              number: 9080
 ```
 
-#### DestinationRule (with Circuit Breaker)
+```bash
+# Apply the VirtualService
+kubectl apply -f bookinfo-virtualservice.yaml
+```
+
+### Step 5: Test the Application
+
+```bash
+# Get the ingress gateway URL
+export INGRESS_HOST=$(kubectl get svc istio-ingressgateway -n istio-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+export INGRESS_PORT=$(kubectl get svc istio-ingressgateway -n istio-ingress -o jsonpath='{.spec.ports[?(@.name=="http2")].port}')
+export GATEWAY_URL=$INGRESS_HOST:$INGRESS_PORT
+
+# For Minikube (if no external IP)
+export GATEWAY_URL=$(minikube service istio-ingressgateway -n istio-ingress --url | head -n1 | sed 's|http://||')
+
+echo "Gateway URL: http://$GATEWAY_URL"
+
+# Test the product page
+curl -s "http://$GATEWAY_URL/productpage" | grep -o "<title>.*</title>"
+
+# Expected: <title>Simple Bookstore App</title>
+```
+
+**Open in browser:**
+```bash
+# Open the product page
+echo "http://$GATEWAY_URL/productpage"
+# Navigate to this URL in your browser
+```
+
+---
+
+## Traffic Management
+
+### Understanding Traffic Flow
+
+```mermaid
+graph LR
+    subgraph "Traffic Flow"
+        R[Request] --> GW[Gateway]
+        GW --> VS[VirtualService]
+        VS --> DR[DestinationRule]
+        DR --> S[Service Pods]
+    end
+```
+
+### Example 1: Route All Traffic to v1
 
 ```yaml
-# charts/bookstore/templates/istio/destinationrule-reviews.yaml
-
-{{- if .Values.reviews.enabled }}
+# Save as destination-rule-reviews.yaml
 apiVersion: networking.istio.io/v1beta1
 kind: DestinationRule
 metadata:
   name: reviews
-  namespace: {{ .Values.namespace }}
-  labels:
-    {{- include "bookstore.labels" . | nindent 4 }}
+  namespace: bookinfo
 spec:
   host: reviews
-  
-  {{- if .Values.trafficManagement.circuitBreaker.enabled }}
-  trafficPolicy:
-    connectionPool:
-      tcp:
-        maxConnections: {{ .Values.trafficManagement.circuitBreaker.maxConnections }}
-      http:
-        http1MaxPendingRequests: {{ .Values.trafficManagement.circuitBreaker.maxPendingRequests }}
-        http2MaxRequests: {{ .Values.trafficManagement.circuitBreaker.maxRequests }}
-        maxRequestsPerConnection: 2
-    outlierDetection:
-      consecutiveErrors: {{ .Values.trafficManagement.circuitBreaker.consecutiveErrors }}
-      interval: {{ .Values.trafficManagement.circuitBreaker.interval }}
-      baseEjectionTime: {{ .Values.trafficManagement.circuitBreaker.baseEjectionTime }}
-      maxEjectionPercent: 50
-      minHealthPercent: 40
-  {{- end }}
-  
   subsets:
-  - name: v1
-    labels:
-      version: v1
-  - name: v2
-    labels:
-      version: v2
-{{- end }}
+    - name: v1
+      labels:
+        version: v1
+    - name: v2
+      labels:
+        version: v2
+    - name: v3
+      labels:
+        version: v3
 ```
 
-#### PeerAuthentication (mTLS)
-
 ```yaml
-# charts/bookstore/templates/istio/peerauthentication.yaml
-
-apiVersion: security.istio.io/v1beta1
-kind: PeerAuthentication
+# Save as virtualservice-reviews-v1.yaml
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
 metadata:
-  name: default
-  namespace: {{ .Values.namespace }}
-  labels:
-    {{- include "bookstore.labels" . | nindent 4 }}
+  name: reviews
+  namespace: bookinfo
 spec:
-  mtls:
-    mode: {{ .Values.istio.mtls.mode }}
-```
-
----
-
-## Traffic Management Patterns
-
-### Pattern 1: Canary Deployment
-
-Gradually shift traffic from old to new version.
-
-```yaml
-# Start: 100% v1
-reviews:
-  v1:
-    weight: 100
-  v2:
-    weight: 0
-
-# Step 1: 90% v1, 10% v2
-helm upgrade bookstore ./bookstore \
-  --set reviews.v1.weight=90 \
-  --set reviews.v2.weight=10
-
-# Step 2: 50-50 split
-helm upgrade bookstore ./bookstore \
-  --set reviews.v1.weight=50 \
-  --set reviews.v2.weight=50
-
-# Final: 100% v2
-helm upgrade bookstore ./bookstore \
-  --set reviews.v1.weight=0 \
-  --set reviews.v2.weight=100
-```
-
-### Pattern 2: Blue-Green Deployment
-
-Instant switch between versions.
-
-```yaml
-# Blue (current) - values-blue.yaml
-reviews:
-  v1:
-    replicaCount: 3
-    weight: 100
-  v2:
-    replicaCount: 3
-    weight: 0
-
-# Green (new) - values-green.yaml
-reviews:
-  v1:
-    replicaCount: 3
-    weight: 0
-  v2:
-    replicaCount: 3
-    weight: 100
+  hosts:
+    - reviews
+  http:
+    - route:
+        - destination:
+            host: reviews
+            subset: v1
+          weight: 100
 ```
 
 ```bash
-# Deploy blue
-helm install bookstore ./bookstore -f values-blue.yaml
-
-# Switch to green
-helm upgrade bookstore ./bookstore -f values-green.yaml
-
-# Instant traffic switch!
+kubectl apply -f destination-rule-reviews.yaml
+kubectl apply -f virtualservice-reviews-v1.yaml
 ```
 
-### Pattern 3: A/B Testing
+**Result:** Refresh the product page multiple times. You should see NO stars (v1 only).
 
-Route based on headers/cookies.
+### Example 2: Canary Deployment (90/10 Split)
 
 ```yaml
-# charts/bookstore/templates/istio/virtualservice-ab.yaml
+# Save as virtualservice-reviews-canary.yaml
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 metadata:
-  name: reviews-ab-test
+  name: reviews
+  namespace: bookinfo
 spec:
   hosts:
-  - reviews
+    - reviews
   http:
-  # Beta users get v2
-  - match:
-    - headers:
-        x-user-group:
-          exact: "beta"
-    route:
-    - destination:
-        host: reviews
-        subset: v2
-  # Everyone else gets v1
-  - route:
-    - destination:
-        host: reviews
-        subset: v1
+    - route:
+        - destination:
+            host: reviews
+            subset: v1
+          weight: 90   # 90% to v1
+        - destination:
+            host: reviews
+            subset: v2
+          weight: 10   # 10% to v2 (black stars)
 ```
 
-### Pattern 4: Dark Launch (Traffic Mirroring)
+```bash
+kubectl apply -f virtualservice-reviews-canary.yaml
+```
 
-Send duplicate traffic to new version for testing.
+**Result:** 9 out of 10 requests show no stars (v1), 1 shows black stars (v2).
+
+```
+      Canary Traffic Splitting
+      
+      ┌─────────────────────────┐
+      │    Incoming Traffic     │
+      │        100%             │
+      └───────────┬─────────────┘
+                  │
+         ┌────────┴────────┐
+         │                 │
+      90% ▼              10% ▼
+   ┌──────────┐      ┌──────────┐
+   │  v1      │      │  v2      │
+   │ No Stars │      │ Black ⭐ │
+   └──────────┘      └──────────┘
+```
+
+### Example 3: Header-Based Routing
+
+Route based on request headers (useful for testing):
 
 ```yaml
+# Save as virtualservice-reviews-header.yaml
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 metadata:
-  name: reviews-mirror
+  name: reviews
+  namespace: bookinfo
 spec:
   hosts:
-  - reviews
+    - reviews
   http:
-  - route:
-    - destination:
-        host: reviews
-        subset: v1
-      weight: 100
-    mirror:
-      host: reviews
-      subset: v2
-    mirrorPercentage:
-      value: 100.0  # Mirror 100% of traffic to v2
+    # If header "end-user: jason" → v2
+    - match:
+        - headers:
+            end-user:
+              exact: jason
+      route:
+        - destination:
+            host: reviews
+            subset: v2
+    # Default → v1
+    - route:
+        - destination:
+            host: reviews
+            subset: v1
+```
+
+```bash
+kubectl apply -f virtualservice-reviews-header.yaml
+```
+
+**Test:** Log in as "jason" on the product page → sees black stars (v2).
+Other users → no stars (v1).
+
+### Example 4: Fault Injection (Testing Resilience)
+
+Introduce delays to test how your app handles slow responses:
+
+```yaml
+# Save as virtualservice-ratings-delay.yaml
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: ratings
+  namespace: bookinfo
+spec:
+  hosts:
+    - ratings
+  http:
+    - fault:
+        delay:
+          percentage:
+            value: 100   # 100% of requests
+          fixedDelay: 7s  # 7 second delay
+      route:
+        - destination:
+            host: ratings
+            subset: v1
+```
+
+**Result:** The ratings service will take 7 seconds to respond.
+
+### Traffic Management Summary
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    TRAFFIC MANAGEMENT OPTIONS                            │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│   📊 TRAFFIC SPLITTING                                                   │
+│   └── Weight-based routing (canary, A/B testing)                        │
+│                                                                          │
+│   🎯 CONTENT-BASED ROUTING                                               │
+│   └── Route by headers, URI, query parameters                           │
+│                                                                          │
+│   💥 FAULT INJECTION                                                     │
+│   └── Delays, aborts (test resilience)                                  │
+│                                                                          │
+│   🔄 RETRIES & TIMEOUTS                                                  │
+│   └── Automatic retry on failure                                        │
+│                                                                          │
+│   🔌 CIRCUIT BREAKING                                                    │
+│   └── Prevent cascade failures                                          │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Security Configurations
+## Security with mTLS
 
-### 1. Strict mTLS
+### What is mTLS?
+
+**Mutual TLS (mTLS)** = Both client and server verify each other's certificates:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           MUTUAL TLS (mTLS)                              │
+└─────────────────────────────────────────────────────────────────────────┘
+
+                     Regular TLS (HTTPS)
+        ┌─────────┐                      ┌─────────┐
+        │ Client  │  ───────────────────▶│ Server  │
+        │         │  "Show me your cert" │   🔐    │
+        │         │◀───────────────────  │         │
+        │         │  "Here's my cert"    └─────────┘
+        │   ✓     │  Client verifies server ✓
+        └─────────┘
+        
+                      Mutual TLS (mTLS)
+        ┌─────────┐                      ┌─────────┐
+        │ Client  │  ───────────────────▶│ Server  │
+        │   🔐    │  "Show me your cert" │   🔐    │
+        │         │◀───────────────────  │         │
+        │         │  "Here's my cert"    │         │
+        │         │  ───────────────────▶│         │
+        │         │  "Now show me YOURS" │         │
+        │         │◀───────────────────  │         │
+        │   ✓     │  Both verify each other ✓      │
+        └─────────┘                      └─────────┘
+```
+
+### Enabling Strict mTLS
+
+By default, Istio uses "PERMISSIVE" mode (accepts both plaintext and mTLS). For production, use STRICT:
 
 ```yaml
-# Namespace-wide mTLS
+# Save as peer-authentication.yaml
 apiVersion: security.istio.io/v1beta1
 kind: PeerAuthentication
 metadata:
   name: default
-  namespace: bookstore
+  namespace: bookinfo  # Apply to bookinfo namespace
 spec:
   mtls:
-    mode: STRICT
+    mode: STRICT  # Only allow mTLS connections
 ```
 
-### 2. Authorization Policies
-
-#### Deny All (Default Deny)
-
-```yaml
-apiVersion: security.istio.io/v1beta1
-kind: AuthorizationPolicy
-metadata:
-  name: deny-all
-  namespace: bookstore
-spec:
-  {}  # Empty spec = deny all
+```bash
+kubectl apply -f peer-authentication.yaml
 ```
 
-#### Allow Frontend to Books
+### mTLS Modes Explained
 
-```yaml
-apiVersion: security.istio.io/v1beta1
-kind: AuthorizationPolicy
-metadata:
-  name: allow-frontend-to-books
-  namespace: bookstore
-spec:
-  selector:
-    matchLabels:
-      app: books
-  action: ALLOW
-  rules:
-  - from:
-    - source:
-        principals:
-        - "cluster.local/ns/bookstore/sa/frontend"
-    to:
-    - operation:
-        methods: ["GET", "POST"]
-        paths: ["/books/*"]
-```
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| **PERMISSIVE** | Accept both plaintext and mTLS | Migration, testing |
+| **STRICT** | Only accept mTLS | Production |
+| **DISABLE** | No mTLS | Debugging |
 
-#### JWT Authentication
+### Verify mTLS is Working
 
-```yaml
-apiVersion: security.istio.io/v1beta1
-kind: RequestAuthentication
-metadata:
-  name: jwt-auth
-  namespace: bookstore
-spec:
-  selector:
-    matchLabels:
-      app: books
-  jwtRules:
-  - issuer: "https://auth.bookstore.com"
-    jwksUri: "https://auth.bookstore.com/.well-known/jwks.json"
-    audiences:
-    - "bookstore-api"
----
-apiVersion: security.istio.io/v1beta1
-kind: AuthorizationPolicy
-metadata:
-  name: require-jwt
-  namespace: bookstore
-spec:
-  selector:
-    matchLabels:
-      app: books
-  action: ALLOW
-  rules:
-  - from:
-    - source:
-        requestPrincipals: ["*"]
-    when:
-    - key: request.auth.claims[role]
-      values: ["user", "admin"]
+```bash
+# Check if mTLS is enabled between services
+kubectl exec -n bookinfo deploy/productpage-v1 -c istio-proxy -- \
+  curl -s http://reviews:9080/health | head -c 100
+
+# If STRICT mTLS is enabled and you try without cert, it will fail
 ```
 
 ---
 
-## Observability
+## Complete Working Example
 
-### ServiceMonitor (Prometheus)
-
-```yaml
-# charts/bookstore/templates/monitoring/servicemonitor.yaml
-
-{{- if and .Values.monitoring.enabled .Values.monitoring.serviceMonitor.enabled }}
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: bookstore
-  namespace: {{ .Values.namespace }}
-  labels:
-    {{- include "bookstore.labels" . | nindent 4 }}
-spec:
-  selector:
-    matchLabels:
-      app: reviews
-  endpoints:
-  - port: http
-    interval: {{ .Values.monitoring.serviceMonitor.interval }}
-    path: /metrics
-  namespaceSelector:
-    matchNames:
-    - {{ .Values.namespace }}
-{{- end }}
-```
-
-### PrometheusRule (Alerts)
-
-```yaml
-# charts/bookstore/templates/monitoring/prometheusrule.yaml
-
-{{- if and .Values.monitoring.enabled .Values.monitoring.prometheusRules.enabled }}
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: bookstore-alerts
-  namespace: {{ .Values.namespace }}
-  labels:
-    {{- include "bookstore.labels" . | nindent 4 }}
-spec:
-  groups:
-  - name: bookstore.rules
-    interval: 30s
-    rules:
-    # High error rate alert
-    - alert: HighErrorRate
-      expr: |
-        (
-          sum(rate(istio_requests_total{
-            destination_service_name="reviews",
-            response_code=~"5.."
-          }[5m]))
-          /
-          sum(rate(istio_requests_total{
-            destination_service_name="reviews"
-          }[5m]))
-        ) * 100 > {{ .Values.monitoring.prometheusRules.highErrorRate.threshold }}
-      for: 5m
-      labels:
-        severity: warning
-        service: reviews
-      annotations:
-        summary: "High error rate for reviews service"
-        description: "Error rate is {{`{{ $value }}`}}%"
-    
-    # High latency alert
-    - alert: HighLatency
-      expr: |
-        histogram_quantile(0.95,
-          sum(rate(istio_request_duration_milliseconds_bucket{
-            destination_service_name="reviews"
-          }[5m])) by (le)
-        ) > {{ .Values.monitoring.prometheusRules.highLatency.threshold }}
-      for: 5m
-      labels:
-        severity: warning
-        service: reviews
-      annotations:
-        summary: "High latency for reviews service"
-        description: "P95 latency is {{`{{ $value }}`}}ms"
-{{- end }}
-```
-
----
-
-## Production Deployment
-
-### Complete Installation Script
+### All-in-One Setup Script
 
 ```bash
 #!/bin/bash
-# install-bookstore.sh
+# complete-istio-setup.sh
 
-set -e
+echo "=== Complete Istio Setup with Helm ==="
 
-echo "🚀 Installing Bookstore Application"
+# 1. Add Istio Helm repo
+echo "Adding Istio Helm repository..."
+helm repo add istio https://istio-release.storage.googleapis.com/charts
+helm repo update
 
-# Configuration
-NAMESPACE="bookstore"
-ENVIRONMENT=${1:-"prod"}  # dev, staging, prod
+# 2. Create namespace
+echo "Creating istio-system namespace..."
+kubectl create namespace istio-system --dry-run=client -o yaml | kubectl apply -f -
 
-echo "📦 Environment: $ENVIRONMENT"
-
-# Step 1: Install Istio Base
-echo "1️⃣  Installing Istio Base (CRDs)..."
-helm upgrade --install istio-base ../istio-base \
-  -n istio-system \
-  --create-namespace \
+# 3. Install istio-base
+echo "Installing istio-base (CRDs)..."
+helm install istio-base istio/base \
+  --namespace istio-system \
+  --version 1.21.0 \
   --wait
 
-# Step 2: Install Istiod
-echo "2️⃣  Installing Istiod (Control Plane)..."
-helm upgrade --install istiod ../istiod \
-  -n istio-system \
-  --wait \
-  --timeout 10m
-
-# Step 3: Install Gateway
-echo "3️⃣  Installing Istio Gateway..."
-helm upgrade --install istio-ingressgateway ../istio-gateway \
-  -n istio-ingress \
-  --create-namespace \
+# 4. Install istiod
+echo "Installing istiod (Control Plane)..."
+helm install istiod istio/istiod \
+  --namespace istio-system \
+  --version 1.21.0 \
   --wait
 
-# Step 4: Wait for gateway external IP
-echo "⏳ Waiting for gateway external IP..."
-kubectl wait --for=condition=ready pod \
-  -l app=istio-ingressgateway \
-  -n istio-ingress \
-  --timeout=300s
+# 5. Create ingress namespace
+echo "Creating istio-ingress namespace..."
+kubectl create namespace istio-ingress --dry-run=client -o yaml | kubectl apply -f -
 
-# Step 5: Create TLS secret (if needed)
-if [ "$ENVIRONMENT" == "prod" ]; then
-  echo "🔒 Creating TLS secret..."
-  kubectl create namespace $NAMESPACE || true
-  kubectl create secret tls bookstore-tls \
-    --cert=certs/tls.crt \
-    --key=certs/tls.key \
-    -n $NAMESPACE || echo "Secret already exists"
-fi
+# 6. Install gateway
+echo "Installing istio-ingressgateway..."
+helm install istio-ingressgateway istio/gateway \
+  --namespace istio-ingress \
+  --version 1.21.0 \
+  --wait
 
-# Step 6: Install application
-echo "4️⃣  Installing Bookstore Application..."
-helm upgrade --install bookstore ./bookstore \
-  -f values-${ENVIRONMENT}.yaml \
-  --create-namespace \
-  --wait \
-  --timeout 5m
+# 7. Verify installation
+echo -e "\n=== Installation Complete ==="
+echo "Installed Helm releases:"
+helm list -n istio-system
+helm list -n istio-ingress
 
-# Step 7: Verification
-echo "✅ Verifying installation..."
-kubectl get pods -n $NAMESPACE
-kubectl get svc -n $NAMESPACE
-kubectl get gateway -n $NAMESPACE
-kubectl get virtualservice -n $NAMESPACE
-
-# Step 8: Get gateway URL
-GATEWAY_IP=$(kubectl get svc istio-ingressgateway \
-  -n istio-ingress \
-  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-
-echo ""
-echo "✨ Installation Complete!"
-echo "📍 Gateway IP: $GATEWAY_IP"
-echo "🌐 Application URL: http://$GATEWAY_IP (or https if TLS enabled)"
-echo ""
-echo "📊 Next steps:"
-echo "  - Update DNS to point to $GATEWAY_IP"
-echo "  - Monitor with: kubectl logs -n $NAMESPACE -l app=reviews -f"
-echo "  - Check Istio proxy: istioctl proxy-status"
-```
-
----
-
-## Multi-Environment Setup
-
-### values-dev.yaml
-
-```yaml
-namespace: bookstore-dev
-
-gateway:
-  hosts:
-    - bookstore-dev.example.com
-  tls:
-    enabled: false
-
-frontend:
-  replicaCount: 1
-  image:
-    tag: "dev"
-  resources:
-    requests:
-      cpu: 50m
-      memory: 64Mi
-
-books:
-  replicaCount: 1
-  resources:
-    requests:
-      cpu: 50m
-      memory: 64Mi
-
-reviews:
-  v1:
-    replicaCount: 1
-    weight: 100
-  v2:
-    replicaCount: 0
-    weight: 0
-
-ratings:
-  replicaCount: 1
-
-trafficManagement:
-  circuitBreaker:
-    enabled: false
-  faultInjection:
-    enabled: true  # Test failures in dev
-
-monitoring:
-  enabled: false
-```
-
-### values-prod.yaml
-
-```yaml
-namespace: bookstore
-
-gateway:
-  hosts:
-    - bookstore.example.com
-    - www.bookstore.example.com
-  tls:
-    enabled: true
-    secretName: bookstore-tls
-
-frontend:
-  replicaCount: 3
-  image:
-    tag: "1.0.0"
-  resources:
-    requests:
-      cpu: 200m
-      memory: 256Mi
-    limits:
-      cpu: 1000m
-      memory: 1Gi
-
-books:
-  replicaCount: 3
-  resources:
-    requests:
-      cpu: 200m
-      memory: 256Mi
-    limits:
-      cpu: 1000m
-      memory: 1Gi
-
-reviews:
-  v1:
-    replicaCount: 3
-    weight: 90
-  v2:
-    replicaCount: 2
-    weight: 10
-  resources:
-    requests:
-      cpu: 200m
-      memory: 256Mi
-
-ratings:
-  replicaCount: 3
-
-istio:
-  mtls:
-    mode: STRICT
-
-trafficManagement:
-  retries:
-    enabled: true
-    attempts: 3
-  circuitBreaker:
-    enabled: true
-  faultInjection:
-    enabled: false
-
-monitoring:
-  enabled: true
-  serviceMonitor:
-    enabled: true
-  prometheusRules:
-    enabled: true
-```
-
----
-
-## Troubleshooting Guide
-
-### Common Issues
-
-#### 1. Sidecar Not Injected
-
-```bash
-# Check namespace label
-kubectl get namespace bookstore --show-labels
-
-# Label namespace
-kubectl label namespace bookstore istio-injection=enabled
-
-# Verify webhook
-kubectl get mutatingwebhookconfigurations | grep istio
-
-# Restart pods
-kubectl rollout restart deployment -n bookstore
-```
-
-#### 2. 503 Service Unavailable
-
-```bash
-# Check if service exists
-kubectl get svc -n bookstore
-
-# Check endpoints
-kubectl get endpoints -n bookstore
-
-# Verify DestinationRule subsets match pod labels
-kubectl get pods -n bookstore --show-labels
-kubectl get destinationrule reviews -n bookstore -o yaml
-
-# Check Envoy config
-istioctl proxy-config routes deploy/frontend -n bookstore
-```
-
-#### 3. mTLS Issues
-
-```bash
-# Check PeerAuthentication
-kubectl get peerauthentication -n bookstore
-
-# Verify certificates
-istioctl proxy-config secret deploy/frontend -n bookstore
-
-# Test connection
-kubectl exec -it deploy/frontend -n bookstore -c istio-proxy -- \
-  curl -v http://books
-```
-
-#### 4. Gateway Not Accessible
-
-```bash
-# Check gateway status
-kubectl get gateway -n bookstore
-kubectl describe gateway bookstore-gateway -n bookstore
-
-# Check gateway pod
+echo -e "\nPods:"
+kubectl get pods -n istio-system
 kubectl get pods -n istio-ingress
-kubectl logs -n istio-ingress -l app=istio-ingressgateway
 
-# Verify external IP
+echo -e "\n=== Setup Complete ==="
+```
+
+### Deploy Sample Application Script
+
+```bash
+#!/bin/bash
+# deploy-bookinfo.sh
+
+echo "=== Deploying Bookinfo Application ==="
+
+# 1. Create namespace with injection
+kubectl create namespace bookinfo --dry-run=client -o yaml | kubectl apply -f -
+kubectl label namespace bookinfo istio-injection=enabled --overwrite
+
+# 2. Deploy application
+echo "Deploying Bookinfo..."
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.21/samples/bookinfo/platform/kube/bookinfo.yaml -n bookinfo
+
+# 3. Wait for pods
+echo "Waiting for pods to be ready..."
+kubectl wait --for=condition=Ready pods --all -n bookinfo --timeout=120s
+
+# 4. Create Gateway and VirtualService
+cat <<EOF | kubectl apply -f -
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: bookinfo-gateway
+  namespace: bookinfo
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - "*"
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: bookinfo
+  namespace: bookinfo
+spec:
+  hosts:
+    - "*"
+  gateways:
+    - bookinfo-gateway
+  http:
+    - match:
+        - uri:
+            exact: /productpage
+        - uri:
+            prefix: /static
+        - uri:
+            exact: /login
+        - uri:
+            exact: /logout
+        - uri:
+            prefix: /api/v1/products
+      route:
+        - destination:
+            host: productpage
+            port:
+              number: 9080
+EOF
+
+# 5. Get access URL
+echo -e "\n=== Application Deployed ==="
+echo "Pods:"
+kubectl get pods -n bookinfo
+
+echo -e "\nAccess URL:"
+echo "Run: minikube service istio-ingressgateway -n istio-ingress --url"
+echo "Then visit: <URL>/productpage"
+```
+
+---
+
+## Verification and Testing
+
+### Complete Verification Checklist
+
+```bash
+#!/bin/bash
+# verify-istio.sh
+
+echo "=== Istio Verification ==="
+
+echo -e "\n1. Helm Releases:"
+helm list -A | grep istio
+
+echo -e "\n2. Istio Pods:"
+kubectl get pods -n istio-system
+kubectl get pods -n istio-ingress
+
+echo -e "\n3. Istio CRDs:"
+kubectl get crds | grep -c istio
+echo "Total Istio CRDs installed"
+
+echo -e "\n4. Webhooks:"
+kubectl get mutatingwebhookconfigurations | grep istio
+kubectl get validatingwebhookconfigurations | grep istio
+
+echo -e "\n5. Gateway Service:"
 kubectl get svc -n istio-ingress
 
-# Test from inside cluster
-kubectl run test --rm -it --image=curlimages/curl -- \
-  curl -H "Host: bookstore.example.com" http://istio-ingressgateway.istio-ingress
+echo -e "\n6. Sample Application (if deployed):"
+kubectl get pods -n bookinfo 2>/dev/null || echo "Bookinfo not deployed"
+
+echo -e "\n=== Verification Complete ==="
 ```
 
-### Diagnostic Commands
+### Testing Traffic Management
 
 ```bash
-# Istio configuration analysis
-istioctl analyze -n bookstore
-
-# Proxy status
-istioctl proxy-status
-
-# View effective configuration
-istioctl proxy-config all deploy/reviews-v1 -n bookstore
-
-# Check routes
-istioctl proxy-config routes deploy/reviews-v1 -n bookstore
-
-# Check clusters
-istioctl proxy-config clusters deploy/reviews-v1 -n bookstore
-
-# Check listeners
-istioctl proxy-config listeners deploy/reviews-v1 -n bookstore
-
-# Describe pod with Istio details
-istioctl describe pod reviews-v1-xxx -n bookstore
-
-# Enable debug logging
-istioctl proxy-config log deploy/reviews-v1 -n bookstore --level debug
-
-# View metrics
-kubectl exec deploy/reviews-v1 -n bookstore -c istio-proxy -- \
-  curl localhost:15000/stats/prometheus
+# Send 100 requests and count responses
+for i in {1..100}; do
+  curl -s "http://$GATEWAY_URL/productpage" | grep -o "reviews-v[0-9]" || echo "no-version"
+done | sort | uniq -c | sort -rn
 ```
 
 ---
 
-## Summary - Part 3
+## Cleanup
 
-### What We've Built
-
-✅ Complete istio-gateway chart  
-✅ Full bookstore application with:
-   - Multiple microservices
-   - Canary deployments
-   - Traffic management
-   - Security policies
-   - Monitoring & alerting
-
-✅ Production patterns:
-   - Blue-green deployment
-   - A/B testing
-   - Dark launches
-   - Circuit breakers
-
-✅ Multi-environment support
-
-### Complete File List
-
-```
-istio-custom-charts/
-├── charts/
-│   ├── istio-base/          ✅ Part 1
-│   ├── istiod/              ✅ Part 2
-│   ├── istio-gateway/       ✅ Part 3
-│   └── bookstore/           ✅ Part 3
-├── scripts/
-│   └── install-bookstore.sh ✅
-└── docs/
-    ├── part1-architecture.md ✅
-    ├── part2-control-plane.md ✅
-    └── part3-applications.md ✅
-```
-
-### Next Steps
-
-1. **Customize for your needs**
-   - Add your services
-   - Modify traffic rules
-   - Adjust resource limits
-
-2. **Integrate with CI/CD**
-   - GitHub Actions
-   - GitLab CI
-   - ArgoCD
-
-3. **Add more features**
-   - Rate limiting
-   - External services
-   - Multi-cluster
-
-4. **Monitor and optimize**
-   - Review metrics
-   - Tune performance
-   - Scale appropriately
-
----
-
-## Complete Installation Example
+### Remove Bookinfo Application
 
 ```bash
-# Clone and setup
-git clone https://github.com/your-org/istio-custom-charts
-cd istio-custom-charts
-
-# Install everything
-./scripts/install-bookstore.sh prod
+# Delete the application
+kubectl delete namespace bookinfo
 
 # Verify
-kubectl get all -n bookstore
-istioctl proxy-status
+kubectl get pods -n bookinfo
+```
 
-# Access application
-GATEWAY_IP=$(kubectl get svc istio-ingressgateway -n istio-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-curl -H "Host: bookstore.example.com" http://$GATEWAY_IP
+### Remove Istio Gateway
 
-# Monitor
-kubectl logs -n bookstore -l app=reviews -f
+```bash
+# Uninstall gateway
+helm uninstall istio-ingressgateway -n istio-ingress
+
+# Delete namespace
+kubectl delete namespace istio-ingress
+```
+
+### Remove Istio Completely
+
+```bash
+# Uninstall in reverse order
+helm uninstall istiod -n istio-system
+helm uninstall istio-base -n istio-system
+
+# Delete namespace
+kubectl delete namespace istio-system
+
+# Verify CRDs are removed
+kubectl get crds | grep istio
+```
+
+### Quick Cleanup Script
+
+```bash
+#!/bin/bash
+# cleanup-istio.sh
+
+echo "=== Cleaning Up Istio ==="
+
+# Delete Bookinfo
+kubectl delete namespace bookinfo --ignore-not-found
+
+# Uninstall Helm releases
+helm uninstall istio-ingressgateway -n istio-ingress 2>/dev/null
+helm uninstall istiod -n istio-system 2>/dev/null
+helm uninstall istio-base -n istio-system 2>/dev/null
+
+# Delete namespaces
+kubectl delete namespace istio-ingress --ignore-not-found
+kubectl delete namespace istio-system --ignore-not-found
+
+echo "=== Cleanup Complete ==="
 ```
 
 ---
 
-**🎉 Congratulations!** You now have complete, production-ready Istio Helm charts!
+## 📝 Summary
+
+### What You Learned in This Guide
+
+| Part | Topics Covered |
+|------|---------------|
+| **Part 1** | Service mesh concepts, Istio architecture, istio-base CRDs |
+| **Part 2** | Istiod control plane, sidecar injection, xDS API |
+| **Part 3** | Gateway, traffic management, mTLS, sample application |
+
+### Complete Installation Commands Reference
+
+```bash
+# Add repo
+helm repo add istio https://istio-release.storage.googleapis.com/charts
+helm repo update
+
+# Install (in order)
+helm install istio-base istio/base -n istio-system --create-namespace
+helm install istiod istio/istiod -n istio-system --wait
+helm install istio-ingressgateway istio/gateway -n istio-ingress --create-namespace
+
+# Verify
+kubectl get pods -n istio-system
+kubectl get pods -n istio-ingress
+
+# Enable injection
+kubectl label namespace <your-ns> istio-injection=enabled
+```
+
+### Key Resources Reference
+
+| Resource | Purpose |
+|----------|---------|
+| **Gateway** | Define entry points (hosts, ports, TLS) |
+| **VirtualService** | Define routing rules |
+| **DestinationRule** | Define subsets and policies |
+| **PeerAuthentication** | Configure mTLS mode |
+| **AuthorizationPolicy** | Define access control |
+
+### Architecture Summary
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      ISTIO ARCHITECTURE SUMMARY                          │
+└─────────────────────────────────────────────────────────────────────────┘
+
+  EXTERNAL TRAFFIC
+        │
+        ▼
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  ISTIO INGRESS GATEWAY                                              │
+  │  helm install istio-ingressgateway istio/gateway                    │
+  └──────────────────────────────┬──────────────────────────────────────┘
+                                 │
+                                 │ Gateway + VirtualService
+                                 ▼
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  SERVICE MESH                                                        │
+  │                                                                      │
+  │   ┌──────────────┐                                                  │
+  │   │   ISTIOD     │◀── helm install istiod istio/istiod              │
+  │   │ Control Plane│                                                  │
+  │   └──────┬───────┘                                                  │
+  │          │ xDS                                                      │
+  │          ▼                                                          │
+  │   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐                │
+  │   │   Pod A     │  │   Pod B     │  │   Pod C     │                │
+  │   │ ┌─────────┐ │  │ ┌─────────┐ │  │ ┌─────────┐ │                │
+  │   │ │  App    │ │  │ │  App    │ │  │ │  App    │ │                │
+  │   │ └─────────┘ │  │ └─────────┘ │  │ └─────────┘ │                │
+  │   │ ┌─────────┐ │  │ ┌─────────┐ │  │ ┌─────────┐ │                │
+  │   │ │ Sidecar │ │◀▶│ │ Sidecar │ │◀▶│ │ Sidecar │ │ ◀── mTLS      │
+  │   │ └─────────┘ │  │ └─────────┘ │  │ └─────────┘ │                │
+  │   └─────────────┘  └─────────────┘  └─────────────┘                │
+  │                                                                      │
+  │   helm install istio-base istio/base (CRDs)                         │
+  └─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🔗 Quick Reference
+
+### Helm Commands
+
+```bash
+# Install Istio
+helm repo add istio https://istio-release.storage.googleapis.com/charts
+helm install istio-base istio/base -n istio-system --create-namespace
+helm install istiod istio/istiod -n istio-system
+helm install istio-ingressgateway istio/gateway -n istio-ingress --create-namespace
+
+# Upgrade
+helm upgrade istiod istio/istiod -n istio-system
+
+# Uninstall (reverse order)
+helm uninstall istio-ingressgateway -n istio-ingress
+helm uninstall istiod -n istio-system
+helm uninstall istio-base -n istio-system
+```
+
+### kubectl Commands
+
+```bash
+# Check Istio
+kubectl get pods -n istio-system
+kubectl get pods -n istio-ingress
+kubectl get crds | grep istio
+
+# Enable injection
+kubectl label namespace <ns> istio-injection=enabled
+
+# Check injection
+kubectl get namespace -L istio-injection
+
+# View configs
+kubectl get virtualservices,destinationrules,gateways -A
+```
+
+---
+
+**🎉 Congratulations! You have completed the Istio Helm installation guide!**
