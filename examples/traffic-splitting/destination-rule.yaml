@@ -17,115 +17,99 @@
 # │                                                                         │
 # │   Without DestinationRule:          With DestinationRule:               │
 # │                                                                         │
-# │   ┌─────────────────────┐          ┌─────────────────────┐             │
-# │   │     All pods        │          │    Subset: v1       │             │
-# │   │  ┌───┐ ┌───┐ ┌───┐  │          │  ┌───┐ ┌───┐ ┌───┐  │             │
-# │   │  │v1 │ │v1 │ │v2 │  │          │  │v1 │ │v1 │ │v1 │  │             │
-# │   │  └───┘ └───┘ └───┘  │          │  └───┘ └───┘ └───┘  │             │
-# │   │                     │          └─────────────────────┘             │
-# │   │  Istio sees:        │                                              │
-# │   │  "3 identical pods" │          ┌─────────────────────┐             │
-# │   └─────────────────────┘          │    Subset: v2       │             │
-# │                                    │  ┌───┐              │             │
-# │   ✗ Cannot route by version        │  │v2 │              │             │
-# │                                    │  └───┘              │             │
-# │                                    └─────────────────────┘             │
+# │   ┌─────────────────────┐          ┌─────────────────────┐              │
+# │   │     All pods        │          │    Subset: v1       │              │
+# │   │  ┌───┐ ┌───┐ ┌───┐  │          │  ┌───┐ ┌───┐ ┌───┐  │              │
+# │   │  │v1 │ │v1 │ │v2 │  │          │  │v1 │ │v1 │ │v1 │  │              │
+# │   │  └───┘ └───┘ └───┘  │          │  └───┘ └───┘ └───┘  │              │
+# │   │                     │          └─────────────────────┘              │
+# │   │  Istio sees:        │                                               │
+# │   │  "3 identical pods" │          ┌─────────────────────┐              │
+# │   └─────────────────────┘          │    Subset: v2       │              │
+# │                                    │  ┌───┐              │              │
+# │   ✗ Cannot route by version        │  │v2 │              │              │
+# │                                    │  └───┘              │              │
+# │                                    └─────────────────────┘              │
 # │                                                                         │
-# │                                    ✓ VirtualService can now route      │
-# │                                      to specific subsets               │
+# │                                    ✓ VirtualService can now route       │
+# │                                      to specific subsets                │
 # │                                                                         │
 # └─────────────────────────────────────────────────────────────────────────┘
 #
-# 🔗 Relationship: Service → DestinationRule → VirtualService
-# ------------------------------------------------------------
+# ============================================================================
+# 📍 NAMING CLARIFICATION - VERY IMPORTANT!
+# ============================================================================
 #
-#   1. Service "reviews" matches pods with app=reviews
-#   2. DestinationRule defines subsets (v1, v2) based on version label
-#   3. VirtualService routes traffic to specific subsets
-#
-#   ┌──────────────────────────────────────────────────────────────────────┐
-#   │                                                                      │
-#   │   Service                                                            │
-#   │   selector: app=reviews ────────────────────────────────────────┐   │
-#   │                                                                  │   │
-#   │   DestinationRule                                               │   │
-#   │   host: reviews                                                 │   │
-#   │   subsets:                                                      │   │
-#   │     - name: v1           ┌── Pods with app=reviews, version=v1 ─┤   │
-#   │       labels:            │                                      │   │
-#   │         version: v1 ─────┘                                      │   │
-#   │     - name: v2           ┌── Pods with app=reviews, version=v2 ─┤   │
-#   │       labels:            │                                      │   │
-#   │         version: v2 ─────┘                                      │   │
-#   │                                                                      │
-#   │   VirtualService                                                    │
-#   │   - destination:                                                    │
-#   │       host: reviews                                                 │
-#   │       subset: v1    ─────────────────────> routes to v1 pods        │
-#   │     weight: 80                                                      │
-#   │   - destination:                                                    │
-#   │       host: reviews                                                 │
-#   │       subset: v2    ─────────────────────> routes to v2 pods        │
-#   │     weight: 20                                                      │
-#   │                                                                      │
-#   └──────────────────────────────────────────────────────────────────────┘
+#   ┌─────────────────────────────────────────────────────────────────────┐
+#   │                                                                     │
+#   │   We use DIFFERENT names to show what matches what:                 │
+#   │                                                                     │
+#   │   ┌─────────────────────────────────────────────────────────────┐   │
+#   │   │  Service NAME:        reviews-svc                           │   │
+#   │   │  Service SELECTOR:    app: myapp                            │   │
+#   │   │  Pod LABEL:           app: myapp, version: v1               │   │
+#   │   │  DestinationRule HOST: reviews-svc                          │   │
+#   │   │  DestinationRule SUBSET: version: v1                        │   │
+#   │   └─────────────────────────────────────────────────────────────┘   │
+#   │                                                                     │
+#   │   HOW MATCHING WORKS:                                               │
+#   │                                                                     │
+#   │   ┌────────────────────┐                                           │
+#   │   │  DestinationRule   │                                           │
+#   │   │  host: reviews-svc │ ──────┐  Matches by SERVICE NAME          │
+#   │   └────────────────────┘       │                                   │
+#   │                                ▼                                   │
+#   │   ┌────────────────────────────────────────────────────────────┐   │
+#   │   │  Service                                                   │   │
+#   │   │  name: reviews-svc      ◄──── host matches THIS (by name) │   │
+#   │   │  selector:                                                 │   │
+#   │   │    app: myapp           ◄──── finds pods with this LABEL  │   │
+#   │   └────────────────────────────────────────────────────────────┘   │
+#   │                                │                                   │
+#   │                                ▼                                   │
+#   │   ┌────────────────────────────────────────────────────────────┐   │
+#   │   │  Pods                                                      │   │
+#   │   │  labels:                                                   │   │
+#   │   │    app: myapp      ◄──── Matched by Service selector       │   │
+#   │   │    version: v1     ◄──── Matched by DestinationRule subset │   │
+#   │   └────────────────────────────────────────────────────────────┘   │
+#   │                                                                     │
+#   │   SUMMARY:                                                          │
+#   │   ─────────────────────────────────────────────────────────────     │
+#   │   host: reviews-svc   →  matches Service NAME (metadata.name)      │
+#   │   app: myapp          →  Pod LABEL (matched by Service selector)   │
+#   │   version: v1         →  Pod LABEL (matched by subset)             │
+#   │                                                                     │
+#   │   They are ALL DIFFERENT values! No confusion now! 🎉              │
+#   │                                                                     │
+#   └─────────────────────────────────────────────────────────────────────┘
 #
 # ============================================================================
 
-apiVersion: networking.istio.io/v1beta1 # Istio API version
-kind: DestinationRule # Istio custom resource
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
 
 metadata:
-  name: reviews # Name of this DestinationRule
-  namespace: traffic-demo # Must be in same namespace as the service
+  name: reviews-destination
+  namespace: traffic-demo
 
 spec:
   # ═══════════════════════════════════════════════════════════════════════
   # HOST - Which service does this rule apply to?
   # ═══════════════════════════════════════════════════════════════════════
   #
-  # Must match a Kubernetes Service name (or external host)
-  # Can be:
-  # - Short name: "reviews" (in same namespace)
-  # - FQDN: "reviews.traffic-demo.svc.cluster.local"
-  # - External: "api.external-service.com"
+  # This is the SERVICE NAME, not a pod label!
+  # It matches: metadata.name in service.yaml (which is "reviews-svc")
   #
-  host: reviews
+  host: reviews-svc # ◄──── Matches Service NAME, NOT app label!
 
-  # ═══════════════════════════════════════════════════════════════════════
-  # TRAFFIC POLICY - Default policies for all subsets
-  # ═══════════════════════════════════════════════════════════════════════
-  #
-  # These apply to ALL traffic to this service unless overridden per-subset
-  #
   trafficPolicy:
-    # ─────────────────────────────────────────────────────────────────────
-    # CONNECTION POOL - Control connection behavior
-    # ─────────────────────────────────────────────────────────────────────
-    #
-    # Limits prevent one slow/faulty service from consuming all connections
-    #
     connectionPool:
       tcp:
-        # Max concurrent TCP connections to all pods
-        # If exceeded, new connections are queued/rejected
         maxConnections: 100
       http:
-        # Max pending HTTP requests (waiting for connection)
         http1MaxPendingRequests: 100
-        # Max concurrent HTTP/2 requests
         http2MaxRequests: 1000
-
-    # ─────────────────────────────────────────────────────────────────────
-    # LOAD BALANCER - How to distribute traffic across pods
-    # ─────────────────────────────────────────────────────────────────────
-    #
-    # Options:
-    # - ROUND_ROBIN: Rotate through pods equally (default)
-    # - LEAST_CONN: Send to pod with fewest active connections
-    # - RANDOM: Random selection
-    # - PASSTHROUGH: Send to IP directly (for non-Istio services)
-    #
     loadBalancer:
       simple: ROUND_ROBIN
 
@@ -133,32 +117,166 @@ spec:
   # SUBSETS - Named groups of pods within the service
   # ═══════════════════════════════════════════════════════════════════════
   #
-  # Each subset defines a group of pods that share common characteristics
-  # VirtualService uses subset names to route to specific groups
+  # ┌─────────────────────────────────────────────────────────────────────┐
+  # │  WHY NO "app: myapp" IN SUBSETS?                                    │
+  # ├─────────────────────────────────────────────────────────────────────┤
+  # │                                                                     │
+  # │  Because "host: reviews-svc" already points to the Service,        │
+  # │  and the Service already filters by "app: myapp".                   │
+  # │                                                                     │
+  # │  Subset labels are ADDITIONAL filters:                              │
+  # │                                                                     │
+  # │  Service (reviews-svc):  app=myapp   →  finds 4 pods               │
+  # │                             +                                       │
+  # │  Subset v1:              version=v1  →  filters to 3 pods          │
+  # │                             =                                       │
+  # │  Result:                 app=myapp AND version=v1                  │
+  # │                                                                     │
+  # └─────────────────────────────────────────────────────────────────────┘
+  #
+  # ============================================================================
+  # 🐤 CANARY DEPLOYMENT PATTERN
+  # ============================================================================
+  #
+  # A canary deployment is a technique to reduce risk when deploying new
+  # software versions. Named after the "canary in a coal mine" concept.
+  #
+  # ┌─────────────────────────────────────────────────────────────────────┐
+  # │                                                                     │
+  # │   CANARY RELEASE STRATEGY                                           │
+  # │   ═══════════════════════                                           │
+  # │                                                                     │
+  # │   Phase 1: Initial Canary (Current State)                           │
+  # │   ─────────────────────────────────────────                         │
+  # │                                                                     │
+  # │   ┌────────────────────────────────┐  ┌────────────┐               │
+  # │   │         v1 (Stable)            │  │ v2 (Canary)│               │
+  # │   │   ┌───┐ ┌───┐ ┌───┐           │  │   ┌───┐    │               │
+  # │   │   │ P │ │ P │ │ P │           │  │   │ P │    │               │
+  # │   │   └───┘ └───┘ └───┘           │  │   └───┘    │               │
+  # │   │      3 pods (80%)              │  │ 1 pod (20%)│               │
+  # │   └────────────────────────────────┘  └────────────┘               │
+  # │                                                                     │
+  # │   If v2 performs well...                                           │
+  # │                                                                     │
+  # │   Phase 2: Increase Canary Traffic (50/50)                          │
+  # │   ─────────────────────────────────────────                         │
+  # │   Update VirtualService: weight v1=50, v2=50                        │
+  # │                                                                     │
+  # │   Phase 3: Full Rollout (0/100)                                     │
+  # │   ─────────────────────────────────────────                         │
+  # │   Update VirtualService: weight v1=0, v2=100                        │
+  # │   Then scale down v1 deployment                                     │
+  # │                                                                     │
+  # │   If v2 has problems at any phase...                                │
+  # │   ─────────────────────────────────────                             │
+  # │   Instant rollback: Set weight v1=100, v2=0                         │
+  # │   No downtime! No redeployment needed!                              │
+  # │                                                                     │
+  # └─────────────────────────────────────────────────────────────────────┘
   #
   subsets:
     # ─────────────────────────────────────────────────────────────────────
     # SUBSET: v1 (Production/Stable version)
     # ─────────────────────────────────────────────────────────────────────
     #
-    # This subset matches pods with label: version=v1
+    # This is your STABLE, battle-tested version
     # VirtualService routes 80% of traffic here
     #
+    # In production, this might be:
+    # - The version that's been running for months
+    # - Fully tested and validated
+    # - Known to be reliable
+    #
     - name: v1 # Subset name (referenced by VirtualService)
-      labels: # Pod labels that must match
-        version: v1 # Only pods with version=v1 are in this subset
-      # Optional: Override traffic policy for this subset only
+      labels:
+        version:
+          v1 # Only pods with version=v1
+          # (app=myapp is already filtered by Service)
+
+      # Optional: Override traffic policy for this subset
+      # Example: More conservative settings for stable version
       # trafficPolicy:
+      #   connectionPool:
+      #     tcp:
+      #       maxConnections: 200  # Higher limit for stable version
+      #     http:
+      #       http2MaxRequests: 2000
       #   loadBalancer:
-      #     simple: LEAST_CONN
+      #     simple: LEAST_CONN    # Different load balancing
 
     # ─────────────────────────────────────────────────────────────────────
     # SUBSET: v2 (Canary/New version)
     # ─────────────────────────────────────────────────────────────────────
     #
-    # This subset matches pods with label: version=v2
-    # VirtualService routes 20% of traffic here
+    # This is your NEW version being tested
+    # VirtualService routes 20% of traffic here (the "canary")
+    #
+    # Why 20%?
+    # - Low enough to minimize impact if bugs exist
+    # - High enough to get meaningful traffic and metrics
+    # - Easy to calculate: 1 out of 5 requests goes to canary
+    #
+    # What to monitor during canary:
+    # - Error rates (should match or be lower than v1)
+    # - Latency (should match or be better than v1)
+    # - Resource usage (CPU, memory)
+    # - Business metrics (conversion rates, etc.)
     #
     - name: v2 # Subset name
       labels:
-        version: v2 # Only pods with version=v2 are in this subset
+        version: v2 # Only pods with version=v2
+
+
+      # Optional: More strict settings for canary (catch issues faster)
+      # trafficPolicy:
+      #   connectionPool:
+      #     tcp:
+      #       maxConnections: 50   # Lower limit for canary
+      #     http:
+      #       http2MaxRequests: 500
+      #   outlierDetection:        # Fast failure detection
+      #     consecutive5xxErrors: 3
+      #     interval: 10s
+      #     baseEjectionTime: 30s
+# ============================================================================
+# 📊 TRAFFIC PROGRESSION EXAMPLES
+# ============================================================================
+#
+# To change traffic split, update VirtualService weights:
+#
+#   # Increase canary to 50%
+#   kubectl patch vs reviews-routing -n traffic-demo --type=merge -p '
+#   spec:
+#     http:
+#     - route:
+#       - destination:
+#           host: reviews-svc
+#           subset: v1
+#         weight: 50
+#       - destination:
+#           host: reviews-svc
+#           subset: v2
+#         weight: 50'
+#
+#   # Full rollout to v2
+#   kubectl patch vs reviews-routing -n traffic-demo --type=merge -p '
+#   spec:
+#     http:
+#     - route:
+#       - destination:
+#           host: reviews-svc
+#           subset: v2
+#         weight: 100'
+#
+#   # Rollback to v1
+#   kubectl patch vs reviews-routing -n traffic-demo --type=merge -p '
+#   spec:
+#     http:
+#     - route:
+#       - destination:
+#           host: reviews-svc
+#           subset: v1
+#         weight: 100'
+#
+# ============================================================================

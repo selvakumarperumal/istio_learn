@@ -19,62 +19,38 @@
 #   │   │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐           │ │
 #   │   │  │   Pod 1     │  │   Pod 2     │  │   Pod 3     │           │ │
 #   │   │  │             │  │             │  │             │           │ │
-#   │   │  │ app:reviews │  │ app:reviews │  │ app:reviews │           │ │
+#   │   │  │ app:myapp   │  │ app:myapp   │  │ app:myapp   │           │ │
 #   │   │  │ version:v1  │  │ version:v1  │  │ version:v1  │           │ │
 #   │   │  └─────────────┘  └─────────────┘  └─────────────┘           │ │
 #   │   │       3 replicas of version 1                                 │ │
 #   │   └────────────────────────────────────────────────────────────────┘ │
 #   │                                                                      │
 #   │   Labels on pods:                                                   │
-#   │   - app: reviews      ← Used by Kubernetes Service                 │
-#   │   - version: v1       ← Used by Istio DestinationRule              │
+#   │   - app: myapp        ← Used by Kubernetes Service selector        │
+#   │   - version: v1       ← Used by Istio DestinationRule subset       │
 #   └──────────────────────────────────────────────────────────────────────┘
-#
-# 🎯 Why 3 replicas for v1?
-# -------------------------
-# Since v1 receives 80% of traffic, we deploy more replicas to handle the load.
-# v2 (canary) only gets 20% traffic, so it only needs 1 replica.
 #
 # ============================================================================
 
-apiVersion: apps/v1 # API version for Deployments
-kind: Deployment # Resource type
+apiVersion: apps/v1
+kind: Deployment
 
 metadata:
-  # ═══════════════════════════════════════════════════════════════════════
-  # DEPLOYMENT METADATA
-  # ═══════════════════════════════════════════════════════════════════════
-  name: reviews-v1 # Unique name for this deployment
-  namespace: traffic-demo # Must match our namespace
+  name: reviews-v1
+  namespace: traffic-demo
 
   labels:
-    # Labels for the Deployment itself (for organizing/selecting deployments)
-    app: reviews # Application name
-    version: v1 # Version identifier
+    app: myapp
+    version: v1
 
 spec:
-  # ═══════════════════════════════════════════════════════════════════════
-  # REPLICA COUNT
-  # ═══════════════════════════════════════════════════════════════════════
-  # Number of pod copies to run
-  # - More replicas = higher availability, more capacity
-  # - For v1 (80% traffic), we use 3 replicas
   replicas: 3
 
-  # ═══════════════════════════════════════════════════════════════════════
-  # SELECTOR
-  # ═══════════════════════════════════════════════════════════════════════
-  # Tells the Deployment which pods it manages
-  # Must match the labels in template.metadata.labels
   selector:
     matchLabels:
-      app: reviews
+      app: myapp
       version: v1
 
-  # ═══════════════════════════════════════════════════════════════════════
-  # POD TEMPLATE
-  # ═══════════════════════════════════════════════════════════════════════
-  # Template for creating pods
   template:
     metadata:
       labels:
@@ -82,9 +58,10 @@ spec:
         # │ IMPORTANT: These labels are CRITICAL for traffic routing!    │
         # ├───────────────────────────────────────────────────────────────┤
         # │                                                               │
-        # │   app: reviews                                               │
+        # │   app: myapp                                                 │
         # │   └── Used by Kubernetes Service to find pods                │
-        # │   └── Service selector: app=reviews (matches both v1 & v2)   │
+        # │   └── Service selector: app=myapp (matches both v1 & v2)     │
+        # │   └── NOTE: Service NAME is "reviews-svc", NOT "myapp"!      │
         # │                                                               │
         # │   version: v1                                                │
         # │   └── Used by Istio DestinationRule to define subsets        │
@@ -92,63 +69,22 @@ spec:
         # │   └── Allows VirtualService to route to specific version     │
         # │                                                               │
         # └───────────────────────────────────────────────────────────────┘
-        app: reviews
-        version: v1
+        app: myapp # ◄──── Matched by Service selector
+        version: v1 # ◄──── Matched by DestinationRule subset
 
     spec:
       containers:
         - name: reviews
-
-          # ═════════════════════════════════════════════════════════════════
-          # CONTAINER IMAGE
-          # ═════════════════════════════════════════════════════════════════
-          # Using nginx:alpine as a lightweight demo server
-          # In production, this would be your actual application image
-          # Example: myregistry.com/reviews:v1.2.3
           image: nginx:alpine
-
-          # ═════════════════════════════════════════════════════════════════
-          # PORTS
-          # ═════════════════════════════════════════════════════════════════
-          # Port that the container listens on
-          # This must match what the Service targets
           ports:
             - containerPort: 80
-              # name: http    # Optional: naming ports helps with debugging
-
-          # ═════════════════════════════════════════════════════════════════
-          # RESOURCE LIMITS
-          # ═════════════════════════════════════════════════════════════════
-          # Define CPU/Memory requests and limits
-          #
-          # requests: Minimum guaranteed resources
-          # limits:   Maximum resources the container can use
-          #
-          # ┌─────────────────────────────────────────────────────────────┐
-          # │  CPU Units:                                                 │
-          # │  - 1000m = 1 CPU core                                       │
-          # │  - 100m = 0.1 CPU core (10% of one core)                   │
-          # │                                                             │
-          # │  Memory Units:                                              │
-          # │  - Mi = Mebibytes (1 MiB = 1024 KiB)                        │
-          # │  - Gi = Gibibytes (1 GiB = 1024 MiB)                        │
-          # └─────────────────────────────────────────────────────────────┘
           resources:
             requests:
-              cpu: 100m # Request 0.1 CPU cores
-              memory: 64Mi # Request 64 MiB memory
+              cpu: 100m
+              memory: 64Mi
             limits:
-              cpu: 200m # Max 0.2 CPU cores
-              memory: 128Mi # Max 128 MiB memory
-
-          # ═════════════════════════════════════════════════════════════════
-          # CUSTOM STARTUP COMMAND
-          # ═════════════════════════════════════════════════════════════════
-          # Override the default nginx startup to serve custom responses
-          # This is for demo purposes - identifies which version handled request
-          #
-          # The /version endpoint returns "Version: v1" so we can see
-          # which version handled each request during testing
+              cpu: 200m
+              memory: 128Mi
           command: ["/bin/sh", "-c"]
           args:
             - |
@@ -158,38 +94,15 @@ spec:
                 location /health { return 200 "OK"; } 
                 location / { return 200 "Reviews Service v1\n"; } 
               }' > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'
-
-          # ═════════════════════════════════════════════════════════════════
-          # HEALTH PROBES
-          # ═════════════════════════════════════════════════════════════════
-          #
-          # livenessProbe: "Is the container alive?"
-          # - If fails: Kubernetes kills and restarts the container
-          # - Used to detect deadlocks or hung processes
-          #
-          # readinessProbe: "Is the container ready to receive traffic?"
-          # - If fails: Pod is removed from Service endpoints
-          # - Used during startup and during temporary issues
-          #
-          # ┌─────────────────────────────────────────────────────────────┐
-          # │   Pod Startup Timeline:                                     │
-          # │                                                             │
-          # │   Container  →  Liveness   →  Readiness  →  Receives      │
-          # │   Starts        Passes        Passes        Traffic        │
-          # │                                                             │
-          # │   0s            5s            5s            5s+            │
-          # └─────────────────────────────────────────────────────────────┘
-          #
           livenessProbe:
             httpGet:
-              path: /health # Endpoint to check
-              port: 80 # Port to check on
-            initialDelaySeconds: 5 # Wait 5s before first probe
-            periodSeconds: 10 # Check every 10s after that
-
+              path: /health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
           readinessProbe:
             httpGet:
               path: /health
               port: 80
-            initialDelaySeconds: 5 # Wait 5s before first probe
-            periodSeconds: 5 # Check every 5s (more frequent than liveness)
+            initialDelaySeconds: 5
+            periodSeconds: 5

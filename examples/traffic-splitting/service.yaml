@@ -5,7 +5,7 @@
 # 📌 What is this file?
 # ---------------------
 # This Service provides a stable network endpoint for the reviews application.
-# It routes traffic to ALL pods with the label "app: reviews" (both v1 & v2).
+# It routes traffic to ALL pods with the label "app: myapp" (both v1 & v2).
 # The actual version-specific routing is handled by Istio, not Kubernetes.
 #
 # 🔄 Service vs VirtualService - Who Does What?
@@ -17,7 +17,7 @@
 # │   ─────────────────────                 ────────────────────            │
 # │                                                                         │
 # │   ✓ Provides DNS name                  ✓ Traffic splitting (80/20)     │
-# │     (reviews.traffic-demo.svc)           between versions              │
+# │     (reviews-svc.traffic-demo.svc)       between versions              │
 # │                                                                         │
 # │   ✓ Load balances across               ✓ Header-based routing          │
 # │     all matching pods                                                   │
@@ -33,25 +33,25 @@
 # 🔍 How They Work Together:
 # --------------------------
 #
-#   1. Request arrives at Service "reviews"
+#   1. Request arrives at Service "reviews-svc"
 #   2. Envoy sidecar intercepts the request
 #   3. Envoy checks VirtualService rules
 #   4. VirtualService says: "80% to v1, 20% to v2"
 #   5. Envoy sends traffic to correct version's pods
 #
-#   ┌──────────────┐    ┌──────────────┐    ┌──────────────────────┐
-#   │   Request    │ -> │   Service    │ -> │   Envoy (Sidecar)    │
-#   │  to reviews  │    │   DNS/LB     │    │   Checks VirtualSvc  │
-#   └──────────────┘    └──────────────┘    └──────────┬───────────┘
-#                                                      │
-#                                           ┌──────────┴───────────┐
-#                                           │                      │
-#                                         80%                    20%
-#                                           ▼                      ▼
-#                                   ┌────────────┐         ┌────────────┐
-#                                   │    v1      │         │    v2      │
-#                                   │   pods     │         │   pods     │
-#                                   └────────────┘         └────────────┘
+#   ┌──────────────┐    ┌───────────────┐    ┌──────────────────────┐
+#   │   Request    │ -> │   Service     │ -> │   Envoy (Sidecar)    │
+#   │  to reviews  │    │ reviews-svc   │    │   Checks VirtualSvc  │
+#   └──────────────┘    └───────────────┘    └──────────┬───────────┘
+#                                                       │
+#                                            ┌──────────┴───────────┐
+#                                            │                      │
+#                                          80%                    20%
+#                                            ▼                      ▼
+#                                    ┌────────────┐         ┌────────────┐
+#                                    │    v1      │         │    v2      │
+#                                    │   pods     │         │   pods     │
+#                                    └────────────┘         └────────────┘
 #
 # ============================================================================
 
@@ -59,85 +59,54 @@ apiVersion: v1
 kind: Service
 
 metadata:
+  # ═══════════════════════════════════════════════════════════════════════
+  # SERVICE NAME - This is what DestinationRule "host" will match!
+  # ═══════════════════════════════════════════════════════════════════════
+  #
+  # NOTE: This is "reviews-svc" (not "reviews" or "myapp")
+  # DestinationRule uses: host: reviews-svc (matches THIS name)
+  #
   name:
-    reviews # Service name - used for DNS
-    # DNS: reviews.traffic-demo.svc.cluster.local
+    reviews-svc # ◄──── DestinationRule "host" matches THIS
+    # DNS: reviews-svc.traffic-demo.svc.cluster.local
   namespace: traffic-demo
 
   labels:
-    app: reviews # Labels for organizing the service itself
+    service:
+      reviews # Label for organizing the service itself
+      # (not used for pod selection)
 
 spec:
   # ═══════════════════════════════════════════════════════════════════════
   # SELECTOR - Which pods receive traffic from this service?
   # ═══════════════════════════════════════════════════════════════════════
   #
-  # IMPORTANT: We ONLY use "app: reviews" here, NOT version labels!
-  #
   # ┌─────────────────────────────────────────────────────────────────────┐
   # │                                                                     │
-  # │   selector:                                                         │
-  # │     app: reviews    ← Matches ALL pods with app=reviews             │
+  # │   SERVICE NAME vs APP LABEL - They are DIFFERENT!                   │
+  # │   ───────────────────────────────────────────────                   │
   # │                                                                     │
-  # │   This means the Service can route to:                              │
-  # │   ✓ reviews-v1 pods (app=reviews, version=v1)                       │
-  # │   ✓ reviews-v2 pods (app=reviews, version=v2)                       │
+  # │   Service name:  reviews-svc     (metadata.name)                    │
+  # │   App label:     myapp           (spec.selector.app)                │
   # │                                                                     │
-  # │   Without Istio: Random distribution across all pods                │
-  # │   With Istio:    Controlled by VirtualService rules                 │
+  # │   DestinationRule host: reviews-svc  → matches service NAME         │
+  # │   Service selector: app=myapp        → matches pod LABEL            │
   # │                                                                     │
   # └─────────────────────────────────────────────────────────────────────┘
   #
   selector:
-    app: reviews
+    app:
+      myapp # ◄──── Matches pods with label app=myapp
+      # NOT "reviews-svc"! This is a different thing!
     # Note: NO version label here - intentionally matches both v1 and v2
 
   # ═══════════════════════════════════════════════════════════════════════
   # PORTS CONFIGURATION
   # ═══════════════════════════════════════════════════════════════════════
-  #
-  # Defines which ports the service exposes and where traffic goes
-  #
-  # ┌─────────────────────────────────────────────────────────────────────┐
-  # │                                                                     │
-  # │   Client request                                                    │
-  # │        │                                                            │
-  # │        ▼                                                            │
-  # │   ┌─────────┐                                                       │
-  # │   │  port   │  (80) - Port other services use to call this service │
-  # │   │         │                                                       │
-  # │   └────┬────┘                                                       │
-  # │        │                                                            │
-  # │        ▼                                                            │
-  # │   ┌────────────┐                                                    │
-  # │   │ targetPort │ (80) - Port the container listens on              │
-  # │   │            │                                                    │
-  # │   └────────────┘                                                    │
-  # │        │                                                            │
-  # │        ▼                                                            │
-  # │   Container                                                         │
-  # │                                                                     │
-  # └─────────────────────────────────────────────────────────────────────┘
-  #
   ports:
-    - name:
-        http # Port name (required for Istio to detect protocol)
-        # Istio uses this to apply HTTP-specific features
-        # Common names: http, grpc, tcp, https
+    - name: http # Port name (required for Istio to detect protocol)
       port: 80 # Port exposed by the service
-      targetPort: 80 # Port on the container (from Deployment)
-      protocol: TCP # Network protocol
+      targetPort: 80 # Port on the container
+      protocol: TCP
 
-  # ═══════════════════════════════════════════════════════════════════════
-  # SERVICE TYPE
-  # ═══════════════════════════════════════════════════════════════════════
-  #
-  # ClusterIP: Only accessible within the cluster
-  # - Default type
-  # - No external access
-  # - Other pods can reach it via: reviews.traffic-demo.svc.cluster.local
-  #
-  # For external access, we use the Istio Gateway instead of changing
-  # the service type to NodePort or LoadBalancer
-  #
   type: ClusterIP
