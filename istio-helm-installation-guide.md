@@ -30,14 +30,17 @@ kubectl cluster-info
 kubectl version --short
 ```
 
-### 2. Helm 3.x Installed
+### 2. Helm 4.x Installed
 
 ```bash
-# Check Helm version
+# Check Helm version (requires Helm 4.x)
 helm version
 
-# If not installed, install Helm:
+# Expected: version.BuildInfo{Version:"v4.1.0", ...}
+
+# If not installed or need to upgrade, install Helm 4.x:
 # curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+# Or download from: https://github.com/helm/helm/releases
 ```
 
 ### 3. Add Istio Helm Repository
