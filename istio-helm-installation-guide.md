@@ -1,6 +1,8 @@
 # Istio Installation Guide with Helm
 
-> **Reference**: This guide is based on the [Official Istio Helm Installation Documentation](https://istio.io/latest/docs/setup/install/helm/)
+> **Version**: This guide uses **Istio 1.28.3** (Latest as of February 2026)
+>
+> **Reference**: [Official Istio Helm Installation Documentation](https://istio.io/latest/docs/setup/install/helm/)
 
 ## 📋 Table of Contents
 
@@ -109,6 +111,7 @@ The base chart installs Custom Resource Definitions (CRDs) required by Istio.
 ```bash
 helm install istio-base istio/base \
   -n istio-system \
+  --version 1.28.3 \
   --set defaultRevision=default \
   --wait
 ```
@@ -142,6 +145,7 @@ Istiod is the control plane that manages the service mesh.
 ```bash
 helm install istiod istio/istiod \
   -n istio-system \
+  --version 1.28.3 \
   --wait
 ```
 
@@ -179,6 +183,7 @@ kubectl label namespace istio-ingress istio-injection=enabled
 # Install the gateway
 helm install istio-ingressgateway istio/gateway \
   -n istio-ingress \
+  --version 1.28.3 \
   --wait
 ```
 
@@ -442,13 +447,13 @@ helm install istiod istio/istiod -n istio-system -f istiod-values.yaml --wait
 ### One-Line Installation
 
 ```bash
-# Complete installation in one go
+# Complete installation in one go (Istio 1.28.3)
 kubectl create namespace istio-system && \
-helm install istio-base istio/base -n istio-system --set defaultRevision=default --wait && \
-helm install istiod istio/istiod -n istio-system --wait && \
+helm install istio-base istio/base -n istio-system --version 1.28.3 --set defaultRevision=default --wait && \
+helm install istiod istio/istiod -n istio-system --version 1.28.3 --wait && \
 kubectl create namespace istio-ingress && \
 kubectl label namespace istio-ingress istio-injection=enabled && \
-helm install istio-ingressgateway istio/gateway -n istio-ingress --wait
+helm install istio-ingressgateway istio/gateway -n istio-ingress --version 1.28.3 --wait
 ```
 
 ### One-Line Uninstallation
