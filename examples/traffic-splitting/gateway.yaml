@@ -1,23 +1,176 @@
-# Gateway exposes the reviews service to external traffic
-# This is the entry point for requests from outside the cluster
+# ============================================================================
+# ISTIO GATEWAY: EXTERNAL ACCESS POINT
+# ============================================================================
+#
+# 📌 What is this file?
+# ---------------------
+# A Gateway configures a load balancer operating at the edge of the mesh.
+# It's the entry point for external traffic into the service mesh.
+#
+# 🚪 Gateway vs Kubernetes Ingress:
+# ----------------------------------
+#
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │                                                                         │
+# │   Kubernetes Ingress:                Istio Gateway:                    │
+# │   ───────────────────                ──────────────                    │
+# │                                                                         │
+# │   ┌─────────────────┐               ┌─────────────────┐                │
+# │   │    Ingress      │               │    Gateway      │                │
+# │   │  (L7 routing)   │               │  (L4-L7 config) │──┐             │
+# │   │                 │               └─────────────────┘  │             │
+# │   │  path: /api     │               + VirtualService     │             │
+# │   │  backend: svc   │               ┌─────────────────┐  │             │
+# │   │                 │               │ VirtualService  │──┘             │
+# │   │  All-in-one     │               │ (L7 routing)    │                │
+# │   └─────────────────┘               └─────────────────┘                │
+# │                                                                         │
+# │   ✗ Limited features                ✓ Full Istio features              │
+# │   ✗ Controller-dependent            ✓ More flexible                    │
+# │                                     ✓ mTLS, traffic splitting          │
+# │                                                                         │
+# └─────────────────────────────────────────────────────────────────────────┘
+#
+# 🔄 How Gateway Works with VirtualService:
+# ------------------------------------------
+#
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │                                                                         │
+# │                    EXTERNAL TRAFFIC FLOW                                │
+# │                                                                         │
+# │   Internet                                                              │
+# │      │                                                                  │
+# │      ▼                                                                  │
+# │   ┌──────────────────────────────────────────────────────────────────┐ │
+# │   │  LoadBalancer Service (istio-ingressgateway)                     │ │
+# │   │  - External IP assigned by cloud provider or Minikube tunnel     │ │
+# │   │  - Receives all external traffic                                 │ │
+# │   └──────────────────────────────┬───────────────────────────────────┘ │
+# │                                  │                                      │
+# │                                  ▼                                      │
+# │   ┌──────────────────────────────────────────────────────────────────┐ │
+# │   │  Gateway Resource (THIS FILE)                                    │ │
+# │   │  - Configures which hosts/ports to accept                        │ │
+# │   │  - "I'll accept traffic for reviews.example.com on port 80"      │ │
+# │   └──────────────────────────────┬───────────────────────────────────┘ │
+# │                                  │                                      │
+# │                                  ▼                                      │
+# │   ┌──────────────────────────────────────────────────────────────────┐ │
+# │   │  VirtualService                                                  │ │
+# │   │  - Defines routing rules                                         │ │
+# │   │  - "Route to v1 (80%) and v2 (20%)"                              │ │
+# │   └──────────────────────────────┬───────────────────────────────────┘ │
+# │                                  │                                      │
+# │                     ┌────────────┴────────────┐                        │
+# │                     │                         │                        │
+# │                ┌────▼────┐              ┌────▼────┐                    │
+# │                │   v1    │              │   v2    │                    │
+# │                │  pods   │              │  pods   │                    │
+# │                └─────────┘              └─────────┘                    │
+# │                                                                         │
+# └─────────────────────────────────────────────────────────────────────────┘
+#
+# ============================================================================
+
 apiVersion: networking.istio.io/v1beta1
 kind: Gateway
-metadata:
-  name: reviews-gateway
-  namespace: traffic-demo
-spec:
-  # Use the Istio ingress gateway
-  selector:
-    istio: ingressgateway
 
+metadata:
+  name: reviews-gateway # Gateway name (referenced by VirtualService)
+  namespace: traffic-demo # Namespace for this resource
+
+spec:
+  # ═══════════════════════════════════════════════════════════════════════
+  # SELECTOR - Which gateway pods should implement this config?
+  # ═══════════════════════════════════════════════════════════════════════
+  #
+  # This selector identifies the Istio ingress gateway deployment
+  # The label "istio: ingressgateway" matches our installed gateway
+  #
+  # ┌─────────────────────────────────────────────────────────────────────┐
+  # │                                                                     │
+  # │   Our Gateway resource          istio-ingressgateway pod           │
+  # │   ─────────────────────         ────────────────────────           │
+  # │                                                                     │
+  # │   selector:                      metadata:                          │
+  # │     istio: ingressgateway  ──────>  labels:                        │
+  # │                                       istio: ingressgateway        │
+  # │                                                                     │
+  # │   "This config applies to pods with label istio=ingressgateway"    │
+  # │                                                                     │
+  # └─────────────────────────────────────────────────────────────────────┘
+  #
+  selector:
+    istio: ingressgateway # Match the default Istio ingress gateway
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # SERVERS - Define which ports/protocols this gateway handles
+  # ═══════════════════════════════════════════════════════════════════════
+  #
+  # Each server entry configures a port listener
+  #
   servers:
-    # HTTP server configuration
+    # ─────────────────────────────────────────────────────────────────────
+    # HTTP SERVER (Port 80)
+    # ─────────────────────────────────────────────────────────────────────
+    #
+    # Accepts HTTP traffic on port 80
+    #
     - port:
-        number: 80
-        name: http
-        protocol: HTTP
+        number: 80 # Port number to listen on
+        name: http # Name for this port (for identification)
+        protocol: HTTP # Protocol (HTTP, HTTPS, GRPC, TCP, etc.)
+
+      # ─────────────────────────────────────────────────────────────────────
+      # HOSTS - Which hostnames does this server accept?
+      # ─────────────────────────────────────────────────────────────────────
+      #
+      # The hosts this gateway will accept traffic for
+      #
+      # ┌─────────────────────────────────────────────────────────────────┐
+      # │                                                                 │
+      # │   Host matching rules:                                          │
+      # │                                                                 │
+      # │   "reviews.example.com"                                         │
+      # │    └── Exact match - only this hostname                        │
+      # │                                                                 │
+      # │   "*.example.com"                                               │
+      # │    └── Wildcard - any subdomain of example.com                 │
+      # │                                                                 │
+      # │   "*"                                                           │
+      # │    └── Accept all hosts (useful for testing)                   │
+      # │                                                                 │
+      # └─────────────────────────────────────────────────────────────────┘
+      #
       hosts:
-        # Accept traffic for this host
-        - reviews.example.com
-        # Also accept any host (for testing)
-        - "*"
+        - reviews.example.com # Accept traffic for this hostname
+        - "*" # Also accept all hosts (for testing)
+          # In production, remove "*" and only
+          # list specific hostnames
+# ============================================================================
+# HTTPS/TLS CONFIGURATION (Optional - for production)
+# ============================================================================
+#
+# To enable HTTPS, add another server entry:
+#
+#   - port:
+#       number: 443
+#       name: https
+#       protocol: HTTPS
+#     hosts:
+#       - reviews.example.com
+#     tls:
+#       mode: SIMPLE                    # or MUTUAL for mTLS from clients
+#       credentialName: reviews-cert    # Secret containing TLS certificate
+#
+# The Secret should contain:
+#   - tls.crt: Server certificate
+#   - tls.key: Private key
+#
+# Create with:
+#   kubectl create secret tls reviews-cert \
+#     --cert=server.crt \
+#     --key=server.key \
+#     -n istio-system
+#
+# ============================================================================

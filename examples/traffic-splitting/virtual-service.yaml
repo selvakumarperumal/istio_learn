@@ -1,55 +1,206 @@
-# VirtualService defines how traffic is routed to the reviews service
-# This configuration splits traffic: 80% to v1, 20% to v2
+# ============================================================================
+# VIRTUAL SERVICE: TRAFFIC SPLITTING RULES (80% v1 / 20% v2)
+# ============================================================================
 #
-# ┌─────────────────┐
-# │ Incoming Traffic│
-# │      100%       │
-# └────────┬────────┘
+# 📌 What is this file?
+# ---------------------
+# A VirtualService defines HOW traffic is routed to a service.
+# This is where the actual 80/20 traffic split is configured.
+#
+# 🔄 Traffic Flow with VirtualService:
+# ------------------------------------
+#
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │                        REQUEST FLOW                                      │
+# └─────────────────────────────────────────────────────────────────────────┘
+#
+#   1. Client sends request
 #          │
-#    ┌─────┴─────┐
-#    │           │
-#  80% ▼       20% ▼
-# ┌──────┐    ┌──────┐
-# │  v1  │    │  v2  │
-# └──────┘    └──────┘
+#          ▼
+#   ┌──────────────────────────────────────────────────────────────────────┐
+#   │  2. Gateway                                                          │
+#   │     - Accepts external traffic                                       │
+#   │     - Matches host: reviews.example.com                              │
+#   └─────────────────────────────┬────────────────────────────────────────┘
+#                                 │
+#                                 ▼
+#   ┌──────────────────────────────────────────────────────────────────────┐
+#   │  3. VirtualService (THIS FILE)                                       │
+#   │     - Applies routing rules                                          │
+#   │     - Decides: 80% to v1, 20% to v2                                  │
+#   │     - Random selection weighted by percentages                       │
+#   └─────────────────────────────┬────────────────────────────────────────┘
+#                                 │
+#               ┌─────────────────┴─────────────────┐
+#               │                                   │
+#            80% ▼                               20% ▼
+#   ┌───────────────────────┐         ┌───────────────────────┐
+#   │  4a. DestinationRule   │         │  4b. DestinationRule   │
+#   │      subset: v1        │         │      subset: v2        │
+#   │                        │         │                        │
+#   │  Matches pods with     │         │  Matches pods with     │
+#   │  version=v1            │         │  version=v2            │
+#   └───────────┬────────────┘         └───────────┬────────────┘
+#               │                                   │
+#               ▼                                   ▼
+#   ┌───────────────────────┐         ┌───────────────────────┐
+#   │  5a. Pod (v1)          │         │  5b. Pod (v2)          │
+#   │  Returns response      │         │  Returns response      │
+#   └───────────────────────┘         └───────────────────────┘
+#
+#
+# 🎚️ How Weight-Based Routing Works:
+# -----------------------------------
+#
+#   Weights must add up to 100 (or omit for equal distribution)
+#
+#   Example weights and their effects:
+#   ┌─────────────────────────────────────────────────────────────────────┐
+#   │  weight: 80 (v1) + weight: 20 (v2)                                 │
+#   │  ═══════════════════════════════════════════════════════════════   │
+#   │  Out of 100 requests:                                              │
+#   │  - ~80 go to v1 pods                                               │
+#   │  - ~20 go to v2 pods                                               │
+#   │                                                                     │
+#   │  The actual distribution is probabilistic, not exact.              │
+#   │  Over time, it averages to 80/20.                                  │
+#   └─────────────────────────────────────────────────────────────────────┘
+#
+# ============================================================================
+
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
+
 metadata:
   name: reviews
   namespace: traffic-demo
+
 spec:
-  # This VirtualService applies to:
-  # 1. Internal mesh traffic to "reviews" service
-  # 2. External traffic via the gateway
+  # ═══════════════════════════════════════════════════════════════════════
+  # HOSTS - What services/domains does this VirtualService apply to?
+  # ═══════════════════════════════════════════════════════════════════════
+  #
+  # This VirtualService applies when traffic is destined for these hosts
+  #
+  # ┌─────────────────────────────────────────────────────────────────────┐
+  # │                                                                     │
+  # │  "reviews"                                                          │
+  # │   └── For mesh-internal traffic (pod-to-pod)                        │
+  # │   └── When another service calls: http://reviews/version            │
+  # │                                                                     │
+  # │  "reviews.example.com"                                              │
+  # │   └── For external traffic via Gateway                              │
+  # │   └── When client requests: http://reviews.example.com/version      │
+  # │                                                                     │
+  # └─────────────────────────────────────────────────────────────────────┘
+  #
   hosts:
-    - reviews
-    - reviews.example.com
+    - reviews # Short name for mesh-internal traffic
+    - reviews.example.com # FQDN for external traffic via Gateway
 
-  # Connect to the gateway for external access
+  # ═══════════════════════════════════════════════════════════════════════
+  # GATEWAYS - Which gateways use this VirtualService?
+  # ═══════════════════════════════════════════════════════════════════════
+  #
+  # Gateways this VirtualService is bound to:
+  #
+  # ┌─────────────────────────────────────────────────────────────────────┐
+  # │                                                                     │
+  # │  "reviews-gateway"                                                  │
+  # │   └── Our custom gateway for external access                        │
+  # │   └── Defined in gateway.yaml                                       │
+  # │                                                                     │
+  # │  "mesh"                                                             │
+  # │   └── Special keyword meaning: apply to all mesh-internal traffic  │
+  # │   └── Pod-to-pod communication uses these rules too                │
+  # │                                                                     │
+  # └─────────────────────────────────────────────────────────────────────┘
+  #
   gateways:
-    - reviews-gateway
-    - mesh # Also apply to internal mesh traffic
+    - reviews-gateway # Apply to traffic through our Gateway
+    - mesh # Also apply to mesh-internal traffic
 
+  # ═══════════════════════════════════════════════════════════════════════
+  # HTTP ROUTING RULES
+  # ═══════════════════════════════════════════════════════════════════════
+  #
+  # Define how HTTP traffic is routed
+  # Rules are evaluated in order - first match wins
+  #
   http:
-    # Traffic splitting rule
+    # ─────────────────────────────────────────────────────────────────────
+    # TRAFFIC SPLITTING RULE - THE MAIN FEATURE!
+    # ─────────────────────────────────────────────────────────────────────
+    #
+    # This rule applies to ALL requests (no match conditions)
+    # It splits traffic between v1 and v2 based on weights
+    #
     - route:
-        # 80% of traffic goes to v1
+        # ═══════════════════════════════════════════════════════════════
+        # DESTINATION 1: Version 1 (80% of traffic)
+        # ═══════════════════════════════════════════════════════════════
+        #
+        # 80 out of 100 requests go to v1 pods
+        # v1 is our stable, production version
+        #
+        - destination:
+            host: reviews # Target service name
+            subset:
+              v1 # Target subset (defined in DestinationRule)
+              # This routes to pods with version=v1 label
+          weight: 80 # 80% of traffic
+
+        # ═══════════════════════════════════════════════════════════════
+        # DESTINATION 2: Version 2 (20% of traffic)
+        # ═══════════════════════════════════════════════════════════════
+        #
+        # 20 out of 100 requests go to v2 pods
+        # v2 is our canary - new version being tested
+        #
         - destination:
             host: reviews
-            subset: v1
-          weight: 80
+            subset: v2 # Routes to pods with version=v2 label
+          weight: 20 # 20% of traffic
 
-        # 20% of traffic goes to v2 (canary)
-        - destination:
-            host: reviews
-            subset: v2
-          weight: 20
-
-      # Optional: Add retry policy for resilience
+      # ───────────────────────────────────────────────────────────────────
+      # RETRY POLICY - Automatic retry on failure
+      # ───────────────────────────────────────────────────────────────────
+      #
+      # If a request fails, Istio automatically retries
+      # This improves reliability without code changes
+      #
+      # ┌─────────────────────────────────────────────────────────────────┐
+      # │  Request fails ─────┐                                          │
+      # │                     │                                          │
+      # │                     ▼                                          │
+      # │            Attempt 1: FAIL                                     │
+      # │                     │                                          │
+      # │                     ▼ (wait, try again)                        │
+      # │            Attempt 2: FAIL                                     │
+      # │                     │                                          │
+      # │                     ▼ (wait, try again)                        │
+      # │            Attempt 3: SUCCESS ──────────────> Return response  │
+      # │                                                                │
+      # │            OR                                                  │
+      # │                                                                │
+      # │            Attempt 3: FAIL ──────────────────> Return error    │
+      # └─────────────────────────────────────────────────────────────────┘
+      #
       retries:
-        attempts: 3
-        perTryTimeout: 2s
-        retryOn: 5xx,reset,connect-failure
+        attempts: 3 # Max retry attempts
+        perTryTimeout: 2s # Timeout for each attempt
+        retryOn:
+          5xx,reset,connect-failure
+          # Retry on:
+          # - 5xx: Server errors (500, 502, 503, etc.)
+          # - reset: Connection reset
+          # - connect-failure: Failed to connect
 
-      # Optional: Add timeout
+      # ───────────────────────────────────────────────────────────────────
+      # TIMEOUT - Maximum time to wait for response
+      # ───────────────────────────────────────────────────────────────────
+      #
+      # If the service doesn't respond within 10 seconds, fail the request
+      # Prevents hanging connections
+      #
       timeout: 10s

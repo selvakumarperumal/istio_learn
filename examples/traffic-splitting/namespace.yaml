@@ -1,10 +1,62 @@
-# Namespace for the traffic splitting demo
-# Includes label to enable automatic Istio sidecar injection
-apiVersion: v1
-kind: Namespace
+# ============================================================================
+# NAMESPACE WITH ISTIO SIDECAR INJECTION
+# ============================================================================
+#
+# 📌 What is this file?
+# ---------------------
+# This file creates a Kubernetes Namespace with automatic Istio sidecar
+# injection enabled. Every pod created in this namespace will automatically
+# get an Envoy proxy sidecar container.
+#
+# 🔍 Why do we need a separate namespace?
+# ----------------------------------------
+# 1. ISOLATION: Keeps our demo resources separate from other workloads
+# 2. EASY CLEANUP: Delete the namespace = delete everything in it
+# 3. SIDECAR INJECTION: We can enable Istio injection at namespace level
+#
+# 🔄 How does sidecar injection work?
+# -----------------------------------
+#
+#   Without Istio injection:          With Istio injection:
+#   ┌─────────────────────┐           ┌─────────────────────┐
+#   │       Pod           │           │       Pod           │
+#   │  ┌───────────────┐  │           │  ┌───────────────┐  │
+#   │  │  Application  │  │           │  │  Application  │  │
+#   │  │  Container    │  │           │  │  Container    │  │
+#   │  └───────────────┘  │           │  └───────────────┘  │
+#   │                     │           │  ┌───────────────┐  │
+#   │   (1 container)     │           │  │ istio-proxy   │  │ ← Auto-injected!
+#   │                     │           │  │ (Envoy)       │  │
+#   │                     │           │  └───────────────┘  │
+#   └─────────────────────┘           │   (2 containers)     │
+#                                     └─────────────────────┘
+#
+# ============================================================================
+
+apiVersion: v1 # Core Kubernetes API version
+kind: Namespace # Resource type: Namespace
+
 metadata:
+  # Name of the namespace
+  # All our traffic-splitting resources will live here
   name: traffic-demo
+
   labels:
-    # This label tells Istio to automatically inject sidecars
-    # into all pods created in this namespace
+    # ═══════════════════════════════════════════════════════════════════════
+    # CRITICAL LABEL: This enables automatic sidecar injection!
+    # ═══════════════════════════════════════════════════════════════════════
+    #
+    # When Istio sees a pod being created in a namespace with this label,
+    # it automatically adds the istio-proxy (Envoy) container to the pod.
+    #
+    # Without this label: Pods won't have sidecars, Istio features won't work
+    # With this label:    Pods get sidecars, full Istio functionality enabled
+    #
+    # How it works:
+    # 1. You apply a Deployment
+    # 2. Kubernetes sends pod spec to Istiod webhook
+    # 3. Istiod sees the namespace has istio-injection=enabled
+    # 4. Istiod modifies pod spec to add istio-proxy container
+    # 5. Modified pod spec is used to create the pod
+    #
     istio-injection: enabled

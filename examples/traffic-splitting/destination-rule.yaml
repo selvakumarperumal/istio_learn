@@ -1,37 +1,164 @@
-# DestinationRule defines subsets (versions) of the reviews service
-# Subsets are used by VirtualService for traffic routing
+# ============================================================================
+# DESTINATION RULE: DEFINES VERSION SUBSETS
+# ============================================================================
 #
-# Think of it as:
-# - DestinationRule: "What versions exist?"
-# - VirtualService: "How much traffic goes to each version?"
-apiVersion: networking.istio.io/v1beta1
-kind: DestinationRule
+# 📌 What is this file?
+# ---------------------
+# A DestinationRule defines policies that apply to traffic destined for a
+# service. Most importantly, it defines SUBSETS - named versions of the
+# service that VirtualService can route to.
+#
+# 🤔 Why do we need DestinationRule?
+# -----------------------------------
+# The Kubernetes Service sees all pods equally. It doesn't know about versions.
+# DestinationRule tells Istio: "These pods are v1, these pods are v2"
+#
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │                                                                         │
+# │   Without DestinationRule:          With DestinationRule:               │
+# │                                                                         │
+# │   ┌─────────────────────┐          ┌─────────────────────┐             │
+# │   │     All pods        │          │    Subset: v1       │             │
+# │   │  ┌───┐ ┌───┐ ┌───┐  │          │  ┌───┐ ┌───┐ ┌───┐  │             │
+# │   │  │v1 │ │v1 │ │v2 │  │          │  │v1 │ │v1 │ │v1 │  │             │
+# │   │  └───┘ └───┘ └───┘  │          │  └───┘ └───┘ └───┘  │             │
+# │   │                     │          └─────────────────────┘             │
+# │   │  Istio sees:        │                                              │
+# │   │  "3 identical pods" │          ┌─────────────────────┐             │
+# │   └─────────────────────┘          │    Subset: v2       │             │
+# │                                    │  ┌───┐              │             │
+# │   ✗ Cannot route by version        │  │v2 │              │             │
+# │                                    │  └───┘              │             │
+# │                                    └─────────────────────┘             │
+# │                                                                         │
+# │                                    ✓ VirtualService can now route      │
+# │                                      to specific subsets               │
+# │                                                                         │
+# └─────────────────────────────────────────────────────────────────────────┘
+#
+# 🔗 Relationship: Service → DestinationRule → VirtualService
+# ------------------------------------------------------------
+#
+#   1. Service "reviews" matches pods with app=reviews
+#   2. DestinationRule defines subsets (v1, v2) based on version label
+#   3. VirtualService routes traffic to specific subsets
+#
+#   ┌──────────────────────────────────────────────────────────────────────┐
+#   │                                                                      │
+#   │   Service                                                            │
+#   │   selector: app=reviews ────────────────────────────────────────┐   │
+#   │                                                                  │   │
+#   │   DestinationRule                                               │   │
+#   │   host: reviews                                                 │   │
+#   │   subsets:                                                      │   │
+#   │     - name: v1           ┌── Pods with app=reviews, version=v1 ─┤   │
+#   │       labels:            │                                      │   │
+#   │         version: v1 ─────┘                                      │   │
+#   │     - name: v2           ┌── Pods with app=reviews, version=v2 ─┤   │
+#   │       labels:            │                                      │   │
+#   │         version: v2 ─────┘                                      │   │
+#   │                                                                      │
+#   │   VirtualService                                                    │
+#   │   - destination:                                                    │
+#   │       host: reviews                                                 │
+#   │       subset: v1    ─────────────────────> routes to v1 pods        │
+#   │     weight: 80                                                      │
+#   │   - destination:                                                    │
+#   │       host: reviews                                                 │
+#   │       subset: v2    ─────────────────────> routes to v2 pods        │
+#   │     weight: 20                                                      │
+#   │                                                                      │
+#   └──────────────────────────────────────────────────────────────────────┘
+#
+# ============================================================================
+
+apiVersion: networking.istio.io/v1beta1 # Istio API version
+kind: DestinationRule # Istio custom resource
+
 metadata:
-  name: reviews
-  namespace: traffic-demo
+  name: reviews # Name of this DestinationRule
+  namespace: traffic-demo # Must be in same namespace as the service
+
 spec:
-  # The service this rule applies to
+  # ═══════════════════════════════════════════════════════════════════════
+  # HOST - Which service does this rule apply to?
+  # ═══════════════════════════════════════════════════════════════════════
+  #
+  # Must match a Kubernetes Service name (or external host)
+  # Can be:
+  # - Short name: "reviews" (in same namespace)
+  # - FQDN: "reviews.traffic-demo.svc.cluster.local"
+  # - External: "api.external-service.com"
+  #
   host: reviews
 
-  # Traffic policy for all subsets (optional)
+  # ═══════════════════════════════════════════════════════════════════════
+  # TRAFFIC POLICY - Default policies for all subsets
+  # ═══════════════════════════════════════════════════════════════════════
+  #
+  # These apply to ALL traffic to this service unless overridden per-subset
+  #
   trafficPolicy:
+    # ─────────────────────────────────────────────────────────────────────
+    # CONNECTION POOL - Control connection behavior
+    # ─────────────────────────────────────────────────────────────────────
+    #
+    # Limits prevent one slow/faulty service from consuming all connections
+    #
     connectionPool:
       tcp:
+        # Max concurrent TCP connections to all pods
+        # If exceeded, new connections are queued/rejected
         maxConnections: 100
       http:
+        # Max pending HTTP requests (waiting for connection)
         http1MaxPendingRequests: 100
+        # Max concurrent HTTP/2 requests
         http2MaxRequests: 1000
+
+    # ─────────────────────────────────────────────────────────────────────
+    # LOAD BALANCER - How to distribute traffic across pods
+    # ─────────────────────────────────────────────────────────────────────
+    #
+    # Options:
+    # - ROUND_ROBIN: Rotate through pods equally (default)
+    # - LEAST_CONN: Send to pod with fewest active connections
+    # - RANDOM: Random selection
+    # - PASSTHROUGH: Send to IP directly (for non-Istio services)
+    #
     loadBalancer:
       simple: ROUND_ROBIN
 
-  # Define version subsets based on pod labels
+  # ═══════════════════════════════════════════════════════════════════════
+  # SUBSETS - Named groups of pods within the service
+  # ═══════════════════════════════════════════════════════════════════════
+  #
+  # Each subset defines a group of pods that share common characteristics
+  # VirtualService uses subset names to route to specific groups
+  #
   subsets:
-    # Subset "v1" matches pods with label version=v1
-    - name: v1
-      labels:
-        version: v1
+    # ─────────────────────────────────────────────────────────────────────
+    # SUBSET: v1 (Production/Stable version)
+    # ─────────────────────────────────────────────────────────────────────
+    #
+    # This subset matches pods with label: version=v1
+    # VirtualService routes 80% of traffic here
+    #
+    - name: v1 # Subset name (referenced by VirtualService)
+      labels: # Pod labels that must match
+        version: v1 # Only pods with version=v1 are in this subset
+      # Optional: Override traffic policy for this subset only
+      # trafficPolicy:
+      #   loadBalancer:
+      #     simple: LEAST_CONN
 
-    # Subset "v2" matches pods with label version=v2
-    - name: v2
+    # ─────────────────────────────────────────────────────────────────────
+    # SUBSET: v2 (Canary/New version)
+    # ─────────────────────────────────────────────────────────────────────
+    #
+    # This subset matches pods with label: version=v2
+    # VirtualService routes 20% of traffic here
+    #
+    - name: v2 # Subset name
       labels:
-        version: v2
+        version: v2 # Only pods with version=v2 are in this subset
