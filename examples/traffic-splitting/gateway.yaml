@@ -1,0 +1,23 @@
+# Gateway exposes the reviews service to external traffic
+# This is the entry point for requests from outside the cluster
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: reviews-gateway
+  namespace: traffic-demo
+spec:
+  # Use the Istio ingress gateway
+  selector:
+    istio: ingressgateway
+
+  servers:
+    # HTTP server configuration
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        # Accept traffic for this host
+        - reviews.example.com
+        # Also accept any host (for testing)
+        - "*"

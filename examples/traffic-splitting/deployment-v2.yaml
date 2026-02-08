@@ -1,0 +1,54 @@
+# Deployment for Version 2 of the reviews service
+# This version handles 20% of the traffic (canary)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reviews-v2
+  namespace: traffic-demo
+  labels:
+    app: reviews
+    version: v2
+spec:
+  # Only 1 replica for canary testing
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reviews
+      version: v2
+  template:
+    metadata:
+      labels:
+        app: reviews
+        version: v2
+    spec:
+      containers:
+        - name: reviews
+          # Using nginx as a simple example
+          # In real scenarios, this would be your new version
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          # Custom response to identify version
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo 'server { listen 80; location /version { return 200 "Version: v2\n"; } location /health { return 200 "OK"; } location / { return 200 "Reviews Service v2 - NEW FEATURES!\n"; } }' > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5

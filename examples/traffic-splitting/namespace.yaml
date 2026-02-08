@@ -1,0 +1,10 @@
+# Namespace for the traffic splitting demo
+# Includes label to enable automatic Istio sidecar injection
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: traffic-demo
+  labels:
+    # This label tells Istio to automatically inject sidecars
+    # into all pods created in this namespace
+    istio-injection: enabled

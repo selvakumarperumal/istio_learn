@@ -1,0 +1,54 @@
+# Deployment for Version 1 of the reviews service
+# This version handles 80% of the traffic
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reviews-v1
+  namespace: traffic-demo
+  labels:
+    app: reviews
+    version: v1
+spec:
+  # 3 replicas to handle majority of traffic
+  replicas: 3
+  selector:
+    matchLabels:
+      app: reviews
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: reviews
+        version: v1
+    spec:
+      containers:
+        - name: reviews
+          # Using nginx as a simple example
+          # In real scenarios, this would be your application
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          # Custom response to identify version
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo 'server { listen 80; location /version { return 200 "Version: v1\n"; } location /health { return 200 "OK"; } location / { return 200 "Reviews Service v1\n"; } }' > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5

@@ -1,0 +1,37 @@
+# DestinationRule defines subsets (versions) of the reviews service
+# Subsets are used by VirtualService for traffic routing
+#
+# Think of it as:
+# - DestinationRule: "What versions exist?"
+# - VirtualService: "How much traffic goes to each version?"
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: reviews
+  namespace: traffic-demo
+spec:
+  # The service this rule applies to
+  host: reviews
+
+  # Traffic policy for all subsets (optional)
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 100
+        http2MaxRequests: 1000
+    loadBalancer:
+      simple: ROUND_ROBIN
+
+  # Define version subsets based on pod labels
+  subsets:
+    # Subset "v1" matches pods with label version=v1
+    - name: v1
+      labels:
+        version: v1
+
+    # Subset "v2" matches pods with label version=v2
+    - name: v2
+      labels:
+        version: v2

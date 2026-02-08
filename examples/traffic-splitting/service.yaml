@@ -1,0 +1,22 @@
+# Kubernetes Service for the reviews application
+# This service routes to ALL pods with app=reviews label
+# The actual traffic splitting is handled by Istio VirtualService
+apiVersion: v1
+kind: Service
+metadata:
+  name: reviews
+  namespace: traffic-demo
+  labels:
+    app: reviews
+spec:
+  # Note: selector only uses "app: reviews"
+  # It matches BOTH v1 and v2 pods
+  # Istio VirtualService handles version-specific routing
+  selector:
+    app: reviews
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
+  type: ClusterIP

@@ -1,0 +1,55 @@
+# VirtualService defines how traffic is routed to the reviews service
+# This configuration splits traffic: 80% to v1, 20% to v2
+#
+# ┌─────────────────┐
+# │ Incoming Traffic│
+# │      100%       │
+# └────────┬────────┘
+#          │
+#    ┌─────┴─────┐
+#    │           │
+#  80% ▼       20% ▼
+# ┌──────┐    ┌──────┐
+# │  v1  │    │  v2  │
+# └──────┘    └──────┘
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: reviews
+  namespace: traffic-demo
+spec:
+  # This VirtualService applies to:
+  # 1. Internal mesh traffic to "reviews" service
+  # 2. External traffic via the gateway
+  hosts:
+    - reviews
+    - reviews.example.com
+
+  # Connect to the gateway for external access
+  gateways:
+    - reviews-gateway
+    - mesh # Also apply to internal mesh traffic
+
+  http:
+    # Traffic splitting rule
+    - route:
+        # 80% of traffic goes to v1
+        - destination:
+            host: reviews
+            subset: v1
+          weight: 80
+
+        # 20% of traffic goes to v2 (canary)
+        - destination:
+            host: reviews
+            subset: v2
+          weight: 20
+
+      # Optional: Add retry policy for resilience
+      retries:
+        attempts: 3
+        perTryTimeout: 2s
+        retryOn: 5xx,reset,connect-failure
+
+      # Optional: Add timeout
+      timeout: 10s
