@@ -1,0 +1,16 @@
+# ============================================================================
+# REQUEST AUTHENTICATION: Validate JWT tokens
+# ============================================================================
+# Using Istio's sample JWT for testing
+apiVersion: security.istio.io/v1beta1
+kind: RequestAuthentication
+metadata:
+  name: jwt-auth
+  namespace: jwt-demo
+spec:
+  selector:
+    matchLabels:
+      app: httpbin
+  jwtRules:
+    - issuer: "testing@secure.istio.io"
+      jwksUri: "https://raw.githubusercontent.com/istio/istio/release-1.20/security/tools/jwt/samples/jwks.json"

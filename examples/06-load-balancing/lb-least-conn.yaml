@@ -1,0 +1,13 @@
+# ============================================================================
+# LOAD BALANCING: Least Connections
+# ============================================================================
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: httpbin-least-conn
+  namespace: lb-demo
+spec:
+  host: httpbin
+  trafficPolicy:
+    loadBalancer:
+      simple: LEAST_CONN # Prefer endpoints with fewer connections

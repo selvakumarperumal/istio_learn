@@ -1,0 +1,53 @@
+# ============================================================================
+# VIRTUAL SERVICE: Header-based routing rules
+# ============================================================================
+#
+# Route traffic based on HTTP headers:
+#   - x-user-type: beta    -> v2 (Beta testers)
+#   - x-user-type: internal -> v3 (Internal team)
+#   - Default              -> v1 (Everyone else)
+#
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: reviews-routing
+  namespace: routing-demo
+spec:
+  hosts:
+    - reviews-svc
+    - reviews.example.com
+  gateways:
+    - reviews-gateway
+    - mesh # Also applies to mesh-internal traffic
+  http:
+    # ═══════════════════════════════════════════════════════════════════════
+    # RULE 1: Route beta users to v2
+    # ═══════════════════════════════════════════════════════════════════════
+    - match:
+        - headers:
+            x-user-type:
+              exact: beta
+      route:
+        - destination:
+            host: reviews-svc
+            subset: v2
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # RULE 2: Route internal team to v3
+    # ═══════════════════════════════════════════════════════════════════════
+    - match:
+        - headers:
+            x-user-type:
+              exact: internal
+      route:
+        - destination:
+            host: reviews-svc
+            subset: v3
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # DEFAULT: All other traffic goes to v1
+    # ═══════════════════════════════════════════════════════════════════════
+    - route:
+        - destination:
+            host: reviews-svc
+            subset: v1

@@ -1,0 +1,13 @@
+# ============================================================================
+# LOAD BALANCING: Round Robin (Default)
+# ============================================================================
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: httpbin-round-robin
+  namespace: lb-demo
+spec:
+  host: httpbin
+  trafficPolicy:
+    loadBalancer:
+      simple: ROUND_ROBIN # Cycles through all endpoints

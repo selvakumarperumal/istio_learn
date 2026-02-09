@@ -1,0 +1,30 @@
+# ============================================================================
+# FAULT INJECTION: Combined - Both delay AND abort
+# ============================================================================
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: httpbin-combined
+  namespace: fault-demo
+spec:
+  hosts:
+    - httpbin
+    - httpbin.example.com
+  gateways:
+    - httpbin-gateway
+    - mesh
+  http:
+    - fault:
+        delay:
+          percentage:
+            value: 30 # 30% get delayed
+          fixedDelay: 3s
+        abort:
+          percentage:
+            value: 20 # 20% get aborted
+          httpStatus: 503
+      route:
+        - destination:
+            host: httpbin
+            port:
+              number: 80

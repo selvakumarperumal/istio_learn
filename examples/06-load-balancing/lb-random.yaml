@@ -1,0 +1,13 @@
+# ============================================================================
+# LOAD BALANCING: Random
+# ============================================================================
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: httpbin-random
+  namespace: lb-demo
+spec:
+  host: httpbin
+  trafficPolicy:
+    loadBalancer:
+      simple: RANDOM # Random endpoint selection

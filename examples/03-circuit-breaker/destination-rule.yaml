@@ -1,0 +1,32 @@
+# ============================================================================
+# CIRCUIT BREAKER: Outlier Detection Configuration
+# ============================================================================
+#
+# This DestinationRule configures circuit breaking using outlier detection
+#
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: httpbin-circuit-breaker
+  namespace: circuit-demo
+spec:
+  host: httpbin
+  trafficPolicy:
+    # ═══════════════════════════════════════════════════════════════════════
+    # CONNECTION POOL: Limit concurrent connections
+    # ═══════════════════════════════════════════════════════════════════════
+    connectionPool:
+      tcp:
+        maxConnections: 1 # Max connections to httpbin
+      http:
+        http1MaxPendingRequests: 1 # Max pending requests
+        maxRequestsPerConnection: 1 # Max requests per connection
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # OUTLIER DETECTION: Circuit breaker settings
+    # ═══════════════════════════════════════════════════════════════════════
+    outlierDetection:
+      consecutive5xxErrors: 1 # Open circuit after 1 error
+      interval: 1s # Check every 1 second
+      baseEjectionTime: 30s # Eject for minimum 30 seconds
+      maxEjectionPercent: 100 # Allow ejecting all hosts

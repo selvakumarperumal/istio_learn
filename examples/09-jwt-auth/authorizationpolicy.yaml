@@ -1,0 +1,17 @@
+# ============================================================================
+# AUTHORIZATION POLICY: Require valid JWT
+# ============================================================================
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: require-jwt
+  namespace: jwt-demo
+spec:
+  selector:
+    matchLabels:
+      app: httpbin
+  rules:
+    - from:
+        - source:
+            requestPrincipals:
+              ["testing@secure.istio.io/testing@secure.istio.io"]

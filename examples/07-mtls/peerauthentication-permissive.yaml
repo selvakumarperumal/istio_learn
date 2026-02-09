@@ -1,0 +1,11 @@
+# ============================================================================
+# PEER AUTHENTICATION: Permissive mTLS (accepts both)
+# ============================================================================
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: mtls-demo
+spec:
+  mtls:
+    mode: PERMISSIVE # Accept both plain HTTP and mTLS

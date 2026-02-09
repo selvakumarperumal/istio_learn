@@ -1,0 +1,14 @@
+# ============================================================================
+# LOAD BALANCING: Consistent Hash (Session Affinity)
+# ============================================================================
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: httpbin-consistent-hash
+  namespace: lb-demo
+spec:
+  host: httpbin
+  trafficPolicy:
+    loadBalancer:
+      consistentHash:
+        httpHeaderName: x-user-id # Same user-id always goes to same pod

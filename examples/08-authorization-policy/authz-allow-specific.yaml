@@ -1,0 +1,20 @@
+# ============================================================================
+# ALLOW SPECIFIC: Only allow requests from sleep service account
+# ============================================================================
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-sleep
+  namespace: authz-demo
+spec:
+  selector:
+    matchLabels:
+      app: httpbin
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/authz-demo/sa/sleep"]
+      to:
+        - operation:
+            methods: ["GET"]

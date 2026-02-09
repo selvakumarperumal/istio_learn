@@ -1,0 +1,11 @@
+# ============================================================================
+# PEER AUTHENTICATION: Strict mTLS for namespace
+# ============================================================================
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: mtls-demo
+spec:
+  mtls:
+    mode: STRICT # Only mTLS connections allowed

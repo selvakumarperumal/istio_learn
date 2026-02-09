@@ -1,0 +1,7 @@
+# Namespace for fault injection example
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fault-demo
+  labels:
+    istio-injection: enabled

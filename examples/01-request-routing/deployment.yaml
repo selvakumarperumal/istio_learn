@@ -1,0 +1,103 @@
+# ============================================================================
+# DEPLOYMENTS: Three versions of the reviews application
+# ============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reviews-v1
+  namespace: routing-demo
+  labels:
+    app: reviews
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reviews
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: reviews
+        version: v1
+    spec:
+      containers:
+        - name: reviews
+          image: hashicorp/http-echo
+          args:
+            - '-text={"version":"v1","message":"Standard Release"}'
+            - "-listen=:8080"
+          ports:
+            - containerPort: 8080
+          resources:
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
+---
+# Version 2 - Beta Release
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reviews-v2
+  namespace: routing-demo
+  labels:
+    app: reviews
+    version: v2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reviews
+      version: v2
+  template:
+    metadata:
+      labels:
+        app: reviews
+        version: v2
+    spec:
+      containers:
+        - name: reviews
+          image: hashicorp/http-echo
+          args:
+            - '-text={"version":"v2","message":"Beta Release ★"}'
+            - "-listen=:8080"
+          ports:
+            - containerPort: 8080
+          resources:
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
+---
+# Version 3 - Internal/Canary Release
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reviews-v3
+  namespace: routing-demo
+  labels:
+    app: reviews
+    version: v3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reviews
+      version: v3
+  template:
+    metadata:
+      labels:
+        app: reviews
+        version: v3
+    spec:
+      containers:
+        - name: reviews
+          image: hashicorp/http-echo
+          args:
+            - '-text={"version":"v3","message":"Internal Release ★★"}'
+            - "-listen=:8080"
+          ports:
+            - containerPort: 8080
+          resources:
+            limits:
+              memory: "64Mi"
+              cpu: "100m"

@@ -1,0 +1,29 @@
+# ============================================================================
+# FAULT INJECTION: Abort - Return HTTP errors to test error handling
+# ============================================================================
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: httpbin-abort
+  namespace: fault-demo
+spec:
+  hosts:
+    - httpbin
+    - httpbin.example.com
+  gateways:
+    - httpbin-gateway
+    - mesh
+  http:
+    - fault:
+        abort:
+          # ═══════════════════════════════════════════════════════════════
+          # Return HTTP 503 on 50% of requests
+          # ═══════════════════════════════════════════════════════════════
+          percentage:
+            value: 50 # Apply to 50% of requests
+          httpStatus: 503 # Return 503 Service Unavailable
+      route:
+        - destination:
+            host: httpbin
+            port:
+              number: 80

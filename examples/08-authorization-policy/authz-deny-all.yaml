@@ -1,0 +1,13 @@
+# ============================================================================
+# DENY ALL: Default deny policy
+# ============================================================================
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-all
+  namespace: authz-demo
+spec:
+  selector:
+    matchLabels:
+      app: httpbin
+  # Empty spec = deny all requests to httpbin

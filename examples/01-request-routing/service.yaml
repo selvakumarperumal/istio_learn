@@ -1,0 +1,15 @@
+# Service for all versions of reviews app
+apiVersion: v1
+kind: Service
+metadata:
+  name: reviews-svc
+  namespace: routing-demo
+  labels:
+    app: reviews
+spec:
+  ports:
+    - port: 80
+      targetPort: 8080
+      name: http
+  selector:
+    app: reviews # Selects ALL versions (v1, v2, v3)

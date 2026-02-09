@@ -1,0 +1,7 @@
+# Namespace for request routing example
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: routing-demo
+  labels:
+    istio-injection: enabled # Enable Istio sidecar injection

@@ -1,0 +1,26 @@
+# ============================================================================
+# DESTINATION RULE: Define subsets for each version
+# ============================================================================
+#
+# Subsets allow routing to specific pod versions using labels
+#
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: reviews-destination
+  namespace: routing-demo
+spec:
+  host: reviews-svc
+  subsets:
+    # Subset v1 - matches pods with version=v1 label
+    - name: v1
+      labels:
+        version: v1
+    # Subset v2 - matches pods with version=v2 label
+    - name: v2
+      labels:
+        version: v2
+    # Subset v3 - matches pods with version=v3 label
+    - name: v3
+      labels:
+        version: v3

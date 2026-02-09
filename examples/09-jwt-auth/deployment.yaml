@@ -1,0 +1,33 @@
+# Protected service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: httpbin
+  namespace: jwt-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: httpbin
+  template:
+    metadata:
+      labels:
+        app: httpbin
+    spec:
+      containers:
+        - name: httpbin
+          image: kennethreitz/httpbin
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: httpbin
+  namespace: jwt-demo
+spec:
+  ports:
+    - port: 80
+      name: http
+  selector:
+    app: httpbin

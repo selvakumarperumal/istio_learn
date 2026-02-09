@@ -1,0 +1,68 @@
+# Backend service (protected)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: httpbin
+  namespace: authz-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: httpbin
+  template:
+    metadata:
+      labels:
+        app: httpbin
+    spec:
+      serviceAccountName: httpbin
+      containers:
+        - name: httpbin
+          image: kennethreitz/httpbin
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: httpbin
+  namespace: authz-demo
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: httpbin
+  namespace: authz-demo
+spec:
+  ports:
+    - port: 80
+      name: http
+  selector:
+    app: httpbin
+---
+# Client service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sleep
+  namespace: authz-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sleep
+  template:
+    metadata:
+      labels:
+        app: sleep
+    spec:
+      serviceAccountName: sleep
+      containers:
+        - name: sleep
+          image: curlimages/curl
+          command: ["sleep", "infinity"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sleep
+  namespace: authz-demo
