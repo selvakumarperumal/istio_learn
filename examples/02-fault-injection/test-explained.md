@@ -17,10 +17,82 @@ Initialize an empty variable to hold the gateway URL.
 EXTERNAL_IP=$(kubectl get svc -n istio-ingress istio-ingressgateway \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
 ```
-**Try LoadBalancer IP first.** In cloud environments (GKE, EKS) or when `minikube tunnel` is running, the Istio Ingress Gateway gets an external IP via the `LoadBalancer` service type. This command queries the service's `.status.loadBalancer.ingress[0].ip` field.
 
-- `-o jsonpath='{...}'` — Extract a specific JSON field from the Kubernetes API response
-- `2>/dev/null` — Suppress stderr errors (e.g., if the field doesn't exist)
+### Breaking this command down piece by piece:
+
+**`$(...)`** — Command substitution. Runs the command inside and stores its stdout output in the `EXTERNAL_IP` variable.
+
+**`kubectl get svc`** — Fetch a Kubernetes Service resource. `svc` is the short name for `service`.
+
+**`-n istio-ingress`** — Look in the `istio-ingress` namespace (where the Istio gateway is installed).
+
+**`istio-ingressgateway`** — The name of the Service to fetch.
+
+**`-o jsonpath='{...}'`** — Instead of the default table output, extract a specific field from the JSON response using JSONPath syntax.
+
+**`2>/dev/null`** — Redirect stderr (file descriptor 2) to `/dev/null` (a black hole). This silences errors like "not found" or "connection refused" so they don't pollute the script output.
+
+### Understanding the JSONPath: `.status.loadBalancer.ingress[0].ip`
+
+When you run `kubectl get svc istio-ingressgateway -n istio-ingress -o json`, Kubernetes returns the full Service object as JSON. Here's what it looks like (simplified):
+
+```json
+{
+  "apiVersion": "v1",
+  "kind": "Service",
+  "metadata": {
+    "name": "istio-ingressgateway",
+    "namespace": "istio-ingress"
+  },
+  "spec": {
+    "type": "LoadBalancer",
+    "ports": [
+      {
+        "name": "http2",
+        "port": 80,
+        "targetPort": 8080,
+        "nodePort": 32268
+      },
+      {
+        "name": "https",
+        "port": 443,
+        "targetPort": 8443,
+        "nodePort": 31390
+      }
+    ]
+  },
+  "status": {
+    "loadBalancer": {
+      "ingress": [
+        {
+          "ip": "34.123.45.67"
+        }
+      ]
+    }
+  }
+}
+```
+
+The JSONPath navigates this tree:
+
+```
+.status                          → { "loadBalancer": { "ingress": [...] } }
+.status.loadBalancer             → { "ingress": [...] }
+.status.loadBalancer.ingress     → [ { "ip": "34.123.45.67" } ]
+.status.loadBalancer.ingress[0]  → { "ip": "34.123.45.67" }
+.status.loadBalancer.ingress[0].ip → "34.123.45.67"
+```
+
+### When does `.status.loadBalancer.ingress` exist?
+
+| Environment | Service Type | Has `.status.loadBalancer.ingress`? |
+|---|---|---|
+| GKE, EKS, AKS (cloud) | LoadBalancer | ✅ Yes — cloud provider assigns an external IP |
+| Minikube + `minikube tunnel` | LoadBalancer | ✅ Yes — tunnel simulates a LoadBalancer |
+| Minikube (no tunnel) | LoadBalancer | ❌ No — stays `<pending>` forever |
+| Any cluster | NodePort or ClusterIP | ❌ No — these types don't get external IPs |
+
+When the field doesn't exist, the jsonpath returns an empty string, which is why the `if` check tests for non-empty (`-n`) and not `"null"`.
 
 ```bash
 if [ -n "$EXTERNAL_IP" ] && [ "$EXTERNAL_IP" != "null" ]; then
