@@ -1,6 +1,17 @@
+# ============================================================================
+# NAMESPACE: Isolated environment for distributed tracing demo
+# ============================================================================
+# Istio sidecars automatically generate trace spans for all incoming and
+# outgoing requests. The sidecar sends these spans to a tracing backend
+# (Jaeger or Zipkin) for visualization.
+#
+# NOTE: Your application MUST propagate B3 trace headers for multi-hop
+# tracing to work! Istio generates headers at ingress, but your app
+# must forward them when making downstream calls.
+# ============================================================================
 apiVersion: v1
 kind: Namespace
 metadata:
   name: tracing-demo
   labels:
-    istio-injection: enabled
+    istio-injection: enabled # Sidecars generate trace spans automatically

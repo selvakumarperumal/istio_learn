@@ -1,4 +1,21 @@
-# Gateway for JWT testing
+# ============================================================================
+# GATEWAY & VIRTUALSERVICE: External Access for JWT Auth Demo
+# ============================================================================
+# PURPOSE:
+#   Configure Istio Ingress Gateway to accept external HTTP traffic for
+#   testing JWT authentication. The RequestAuthentication policy will
+#   validate tokens at this entry point.
+#
+# JWT AUTH FLOW:
+#   External Client → Istio Ingress Gateway → [JWT VALIDATION] → httpbin
+#                          ↓                        ↓
+#                    Gateway Config          RequestAuthentication
+#                                            + AuthorizationPolicy
+#
+# RELATED FILES:
+#   - requestauthentication.yaml: Defines JWT validation rules
+#   - authorizationpolicy.yaml: Enforces JWT requirement
+# ============================================================================
 apiVersion: networking.istio.io/v1beta1
 kind: Gateway
 metadata:
@@ -6,15 +23,18 @@ metadata:
   namespace: jwt-demo
 spec:
   selector:
-    istio: ingressgateway
+    istio: ingressgateway # Default Istio ingress gateway
   servers:
     - port:
         number: 80
         name: http
         protocol: HTTP
       hosts:
-        - "*"
+        - "*" # Accept all hostnames for testing
 ---
+# ============================================================================
+# VIRTUAL SERVICE: Route traffic to httpbin
+# ============================================================================
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 metadata:

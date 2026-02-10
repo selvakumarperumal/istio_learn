@@ -1,15 +1,24 @@
-# Service for all versions of reviews app
+# ============================================================================
+# SERVICE: Single endpoint for all versions of reviews
+# ============================================================================
+# This Service selects ALL pods with app=reviews, covering v1, v2, and v3.
+# Istio's VirtualService handles version-specific routing via subsets.
+#
+# NOTE: The Service name "reviews-svc" is what DestinationRule's host matches.
+#       The selector "app: reviews" is what finds the pods.
+#       These are DIFFERENT values — don't confuse them!
+# ============================================================================
 apiVersion: v1
 kind: Service
 metadata:
-  name: reviews-svc
+  name: reviews-svc # Matched by DestinationRule host + VirtualService host
   namespace: routing-demo
   labels:
     app: reviews
 spec:
   ports:
     - port: 80
-      targetPort: 8080
-      name: http
+      targetPort: 8080 # Pods listen on 8080
+      name: http # Named port (required for Istio protocol detection)
   selector:
     app: reviews # Selects ALL versions (v1, v2, v3)

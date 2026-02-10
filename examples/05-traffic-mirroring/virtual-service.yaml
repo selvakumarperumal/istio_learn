@@ -1,5 +1,31 @@
 # ============================================================================
-# TRAFFIC MIRRORING: Send copy of traffic to v2
+# VIRTUAL SERVICE: Traffic Mirroring (Shadow Traffic)
+# ============================================================================
+# PURPOSE:
+#   Mirror production traffic to a canary version (v2) for testing.
+#   The mirror receives a COPY of all requests, but responses are ignored.
+#   This allows testing new versions with real production traffic without risk.
+#
+# HOW MIRRORING WORKS:
+#   Client Request → Envoy Proxy
+#                      ├──→ v1 (production) → Response sent to client
+#                      └──→ v2 (mirror) ───→ Response DISCARDED
+#
+# USE CASES:
+#   - Test new version with real traffic patterns
+#   - Validate logging, metrics, error handling in v2
+#   - Compare v2 behavior/performance to v1
+#   - Zero-risk canary testing
+#
+# IMPORTANT:
+#   - Mirror responses are NEVER sent to the client
+#   - Client always receives v1's response
+#   - Mirror requests have "-shadow" suffix added to Host header
+#   - If v2 is slow/failing, it does NOT affect client experience
+#
+# RELATED FILES:
+#   - destination-rule.yaml : Defines v1 and v2 subsets
+#   - deployment.yaml       : v1 (production) and v2 (canary) pods
 # ============================================================================
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
@@ -8,15 +34,21 @@ metadata:
   namespace: mirror-demo
 spec:
   hosts:
-    - httpbin
+    - httpbin # Service to apply mirroring to
   http:
     - route:
+        # ───────────────────────────────────────────────────────────────────
+        # PRIMARY DESTINATION: v1 receives all production traffic
+        # ───────────────────────────────────────────────────────────────────
         - destination:
             host: httpbin
-            subset: v1
-          weight: 100 # All production traffic to v1
+            subset: v1 # Subset defined in DestinationRule
+          weight: 100 # 100% of traffic goes to v1 (production)
+      # ─────────────────────────────────────────────────────────────────────
+      # MIRROR: Copy traffic to v2 for testing
+      # ─────────────────────────────────────────────────────────────────────
       mirror:
         host: httpbin
-        subset: v2 # Mirror to v2
+        subset: v2 # Mirror destination subset
       mirrorPercentage:
-        value: 100.0 # Mirror 100% of requests
+        value: 100.0 # Percentage of requests to mirror (0-100)

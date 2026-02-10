@@ -1,40 +1,78 @@
 # ============================================================================
-# DEPLOYMENTS: Three versions of the reviews application
+# DEPLOYMENTS: Three Versions of the Reviews Application
 # ============================================================================
+# PURPOSE:
+#   Deploy three versions of the same application to demonstrate Istio's
+#   header-based routing capabilities. Each version returns a different
+#   response, making it easy to verify which version received the request.
+#
+# VERSIONS:
+#   v1 (Standard)  → Default for all users, returns "Standard Release"
+#   v2 (Beta)      → For beta testers (x-user-type: beta header)
+#   v3 (Internal)  → For internal team (x-user-type: internal header)
+#
+# RELATED FILES:
+#   - service.yaml          : Single service that selects all versions
+#   - destination-rule.yaml : Defines v1/v2/v3 subsets using version labels
+#   - virtual-service.yaml  : Routes traffic based on headers to subsets
+#
+# KEY CONCEPT:
+#   All three deployments share the same "app: reviews" label, so they are
+#   all selected by the reviews-svc Service. Istio's VirtualService then
+#   uses DestinationRule subsets to route to specific versions.
+# ============================================================================
+
+# ════════════════════════════════════════════════════════════════════════════
+# VERSION 1: Standard Release (Default)
+# ════════════════════════════════════════════════════════════════════════════
+# Target Users: Everyone (when no special header is present)
+# Response: {"version":"v1","message":"Standard Release"}
+# ════════════════════════════════════════════════════════════════════════════
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: reviews-v1
   namespace: routing-demo
   labels:
-    app: reviews
-    version: v1
+    app: reviews # Groups all versions under same app
+    version: v1 # Distinguishes this version
 spec:
-  replicas: 1
+  replicas: 1 # Single replica for demo purposes
   selector:
     matchLabels:
       app: reviews
-      version: v1
+      version: v1 # Must match pod template labels
   template:
     metadata:
       labels:
-        app: reviews
-        version: v1
+        app: reviews # Selected by reviews-svc Service
+        version: v1 # Used by DestinationRule subset "v1"
     spec:
       containers:
         - name: reviews
-          image: hashicorp/http-echo
+          image: hashicorp/http-echo # Lightweight HTTP server for testing
           args:
             - '-text={"version":"v1","message":"Standard Release"}'
-            - "-listen=:8080"
+            - "-listen=:8080" # Listen on port 8080
           ports:
             - containerPort: 8080
+          # ──────────────────────────────────────────────────────────────────
+          # RESOURCES: Prevent pod starvation and ensure QoS
+          # ──────────────────────────────────────────────────────────────────
           resources:
-            limits:
-              memory: "64Mi"
-              cpu: "100m"
+            requests: # Minimum guaranteed resources
+              memory: "64Mi" # Request 64 MiB memory
+              cpu: "100m" # Request 100 millicores (0.1 CPU)
+            limits: # Maximum allowed resources
+              memory: "64Mi" # Limit to 64 MiB (OOMKilled if exceeded)
+              cpu: "100m" # Limit to 100 millicores (throttled if exceeded)
 ---
-# Version 2 - Beta Release
+# ════════════════════════════════════════════════════════════════════════════
+# VERSION 2: Beta Release
+# ════════════════════════════════════════════════════════════════════════════
+# Target Users: Beta testers (header: x-user-type: beta)
+# Response: {"version":"v2","message":"Beta Release ★"}
+# ════════════════════════════════════════════════════════════════════════════
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -53,7 +91,7 @@ spec:
     metadata:
       labels:
         app: reviews
-        version: v2
+        version: v2 # Used by DestinationRule subset "v2"
     spec:
       containers:
         - name: reviews
@@ -64,11 +102,19 @@ spec:
           ports:
             - containerPort: 8080
           resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
             limits:
               memory: "64Mi"
               cpu: "100m"
 ---
-# Version 3 - Internal/Canary Release
+# ════════════════════════════════════════════════════════════════════════════
+# VERSION 3: Internal/Canary Release
+# ════════════════════════════════════════════════════════════════════════════
+# Target Users: Internal team (header: x-user-type: internal)
+# Response: {"version":"v3","message":"Internal Release ★★"}
+# ════════════════════════════════════════════════════════════════════════════
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -87,7 +133,7 @@ spec:
     metadata:
       labels:
         app: reviews
-        version: v3
+        version: v3 # Used by DestinationRule subset "v3"
     spec:
       containers:
         - name: reviews
@@ -98,6 +144,9 @@ spec:
           ports:
             - containerPort: 8080
           resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
             limits:
               memory: "64Mi"
               cpu: "100m"

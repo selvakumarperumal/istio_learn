@@ -1,7 +1,16 @@
-# Namespace for request routing example
+# ============================================================================
+# NAMESPACE: Isolated environment for header-based request routing demo
+# ============================================================================
+# Creates a namespace for demonstrating Istio's header-based routing.
+# Three versions of the reviews app (v1, v2, v3) are deployed, and the
+# VirtualService routes traffic based on the x-user-type HTTP header:
+#   No header       → v1 (default/stable)
+#   x-user-type: beta     → v2 (beta features)
+#   x-user-type: internal → v3 (internal/debug)
+# ============================================================================
 apiVersion: v1
 kind: Namespace
 metadata:
   name: routing-demo
   labels:
-    istio-injection: enabled # Enable Istio sidecar injection
+    istio-injection: enabled # Sidecars enable VirtualService routing rules

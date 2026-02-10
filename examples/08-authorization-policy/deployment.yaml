@@ -1,9 +1,45 @@
-# Backend service (protected)
+# ============================================================================
+# DEPLOYMENTS: httpbin + sleep with ServiceAccounts for Authorization Demo
+# ============================================================================
+# PURPOSE:
+#   Deploy services with distinct ServiceAccounts to demonstrate Istio's
+#   authorization policies. ServiceAccounts provide the IDENTITY used in
+#   AuthorizationPolicy rules.
+#
+# WHY SERVICEACCOUNTS MATTER:
+#   Istio identifies each workload by its ServiceAccount:
+#   - httpbin pod → cluster.local/ns/authz-demo/sa/httpbin
+#   - sleep pod   → cluster.local/ns/authz-demo/sa/sleep
+#
+#   AuthorizationPolicy uses these identities to control who can access what.
+#
+# ZERO TRUST FLOW:
+#   1. Deploy with deny-all policy → All access blocked
+#   2. Add allow-sleep policy → Only sleep can access httpbin
+#   3. Other services remain blocked
+#
+# HOW TO TEST:
+#   # Test from sleep (should work after allow policy is applied)
+#   $ kubectl exec deploy/sleep -n authz-demo -- curl http://httpbin:80/get
+#
+#   # Test from another namespace (should be denied)
+#   $ kubectl exec deploy/some-pod -n other-ns -- curl http://httpbin.authz-demo:80/get
+#
+# RELATED FILES:
+#   - authz-deny-all.yaml: Blocks all traffic (apply first)
+#   - authz-allow-specific.yaml: Allows only sleep → httpbin GET requests
+# ============================================================================
+
+# ════════════════════════════════════════════════════════════════════════════
+# httpbin: Protected Backend Service
+# ════════════════════════════════════════════════════════════════════════════
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: httpbin
   namespace: authz-demo
+  labels:
+    app: httpbin
 spec:
   replicas: 1
   selector:
@@ -14,13 +50,24 @@ spec:
       labels:
         app: httpbin
     spec:
-      serviceAccountName: httpbin
+      serviceAccountName: httpbin # Critical! Gives this pod its identity
       containers:
         - name: httpbin
           image: kennethreitz/httpbin
           ports:
             - containerPort: 80
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "200m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
 ---
+# ════════════════════════════════════════════════════════════════════════════
+# ServiceAccount for httpbin
+# ════════════════════════════════════════════════════════════════════════════
+# Identity: cluster.local/ns/authz-demo/sa/httpbin
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -39,12 +86,16 @@ spec:
   selector:
     app: httpbin
 ---
-# Client service
+# ════════════════════════════════════════════════════════════════════════════
+# sleep: Client Service (makes requests to httpbin)
+# ════════════════════════════════════════════════════════════════════════════
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: sleep
   namespace: authz-demo
+  labels:
+    app: sleep
 spec:
   replicas: 1
   selector:
@@ -55,12 +106,24 @@ spec:
       labels:
         app: sleep
     spec:
-      serviceAccountName: sleep
+      serviceAccountName: sleep # Critical! AuthorizationPolicy checks this
       containers:
         - name: sleep
           image: curlimages/curl
           command: ["sleep", "infinity"]
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
 ---
+# ════════════════════════════════════════════════════════════════════════════
+# ServiceAccount for sleep
+# ════════════════════════════════════════════════════════════════════════════
+# Identity: cluster.local/ns/authz-demo/sa/sleep
+# This identity is referenced in authz-allow-specific.yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:

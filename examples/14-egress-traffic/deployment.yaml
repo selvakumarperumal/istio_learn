@@ -1,9 +1,42 @@
-# Test client
+# ============================================================================
+# DEPLOYMENT: sleep - Client for Egress Traffic Testing
+# ============================================================================
+# PURPOSE:
+#   Deploy a simple pod with curl to make outbound (egress) requests to
+#   external services like httpbin.org.
+#
+# HOW TO USE:
+#   1. Make requests to external service:
+#      $ kubectl exec deploy/sleep -n egress-demo -- \
+#          curl -s http://httpbin.org/get
+#
+#   2. Test HTTPS to external service:
+#      $ kubectl exec deploy/sleep -n egress-demo -- \
+#          curl -s https://httpbin.org/get
+#
+# EGRESS CONTROL MODES:
+#   Istio can be configured to control egress traffic differently:
+#
+#   ALLOW_ANY (default):
+#     - All outbound traffic allowed
+#     - ServiceEntry adds observability but isn't required
+#
+#   REGISTRY_ONLY:
+#     - Only traffic to registered ServiceEntries allowed
+#     - Unregistered external services are blocked
+#     - Set in meshConfig: outboundTrafficPolicy.mode = REGISTRY_ONLY
+#
+# RELATED FILES:
+#   - serviceentry.yaml: Registers httpbin.org as external service
+# ============================================================================
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: sleep
   namespace: egress-demo
+  labels:
+    app: sleep
 spec:
   replicas: 1
   selector:
@@ -16,5 +49,15 @@ spec:
     spec:
       containers:
         - name: sleep
-          image: curlimages/curl
+          image: curlimages/curl # Lightweight image with curl
           command: ["sleep", "infinity"]
+          # ──────────────────────────────────────────────────────────────────
+          # RESOURCES: Prevent pod starvation
+          # ──────────────────────────────────────────────────────────────────
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "64Mi"
+              cpu: "100m"

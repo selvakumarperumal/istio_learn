@@ -1,11 +1,40 @@
-# 3 replicas to demonstrate load balancing
+# ============================================================================
+# DEPLOYMENT & SERVICE: httpbin with 3 Replicas for Load Balancing Demo
+# ============================================================================
+# PURPOSE:
+#   Deploy httpbin with multiple replicas to demonstrate different Istio
+#   load balancing algorithms. With 3 replicas, you can observe how each
+#   algorithm distributes traffic differently.
+#
+# HOW TO TEST:
+#   1. Apply the deployment and one of the LB policies:
+#      $ kubectl apply -f deployment.yaml
+#      $ kubectl apply -f lb-round-robin.yaml  # or another LB policy
+#
+#   2. Send multiple requests and observe distribution:
+#      $ for i in {1..10}; do curl http://httpbin:80/headers; done
+#
+#   3. Check which pod received each request (look at pod logs or response)
+#
+# LOAD BALANCING ALGORITHMS (apply only ONE at a time):
+#   - lb-round-robin.yaml    : Cycles through pods 1→2→3→1→2→3...
+#   - lb-random.yaml         : Randomly picks a pod each time
+#   - lb-least-conn.yaml     : Picks pod with fewest active connections
+#   - lb-consistent-hash.yaml: Same user always hits same pod (sticky)
+#
+# RELATED FILES:
+#   - lb-*.yaml files: Different load balancing DestinationRule configs
+# ============================================================================
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: httpbin
   namespace: lb-demo
+  labels:
+    app: httpbin
 spec:
-  replicas: 3
+  replicas: 3 # 3 replicas to demonstrate LB distribution
   selector:
     matchLabels:
       app: httpbin
@@ -19,7 +48,23 @@ spec:
           image: kennethreitz/httpbin
           ports:
             - containerPort: 80
+          # ──────────────────────────────────────────────────────────────────
+          # RESOURCES: Prevent pod starvation and ensure stable QoS
+          # ──────────────────────────────────────────────────────────────────
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "200m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
 ---
+# ============================================================================
+# SERVICE: Exposes all 3 replicas
+# ============================================================================
+# NOTE: The service load balances using kube-proxy by default.
+#       Istio's DestinationRule OVERRIDES this with smarter algorithms.
+# ============================================================================
 apiVersion: v1
 kind: Service
 metadata:
@@ -30,4 +75,4 @@ spec:
     - port: 80
       name: http
   selector:
-    app: httpbin
+    app: httpbin # Selects all 3 replica pods

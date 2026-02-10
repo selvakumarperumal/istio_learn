@@ -1,6 +1,13 @@
+# ============================================================================
+# NAMESPACE: Isolated environment for egress traffic demo
+# ============================================================================
+# Istio sidecar injection enables the Envoy proxy to intercept and
+# manage outbound (egress) traffic. With a sidecar, external requests
+# go through Envoy, enabling ServiceEntry policies, metrics, and tracing.
+# ============================================================================
 apiVersion: v1
 kind: Namespace
 metadata:
   name: egress-demo
   labels:
-    istio-injection: enabled
+    istio-injection: enabled # Sidecars intercept outbound traffic

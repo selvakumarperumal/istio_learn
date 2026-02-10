@@ -1,17 +1,38 @@
-# Gateway for external access
+# ============================================================================
+# GATEWAY: External Traffic Entry Point for Request Routing Demo
+# ============================================================================
+# PURPOSE:
+#   Configures the Istio Ingress Gateway to accept external HTTP traffic
+#   and route it to the VirtualService for header-based routing decisions.
+#
+# HOW IT WORKS:
+#   External Request → Istio Ingress Gateway → This Gateway Config
+#                    → VirtualService (reviews-routing) → Destination Pods
+#
+# RELATED FILES:
+#   - virtual-service.yaml : Defines the actual routing rules
+#   - destination-rule.yaml : Defines the v1/v2/v3 subsets
+# ============================================================================
 apiVersion: networking.istio.io/v1beta1
 kind: Gateway
 metadata:
-  name: reviews-gateway
+  name: reviews-gateway # Referenced by VirtualService
   namespace: routing-demo
 spec:
+  # ─────────────────────────────────────────────────────────────────────────
+  # SELECTOR: Which Istio gateway workload should handle this config
+  # ─────────────────────────────────────────────────────────────────────────
   selector:
-    istio: ingressgateway
+    istio: ingressgateway # Default Istio ingress gateway pods
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # SERVERS: Port and host configurations for incoming traffic
+  # ─────────────────────────────────────────────────────────────────────────
   servers:
     - port:
-        number: 80
-        name: http
-        protocol: HTTP
+        number: 80 # Listen on HTTP port 80
+        name: http # Port name (required for Istio)
+        protocol: HTTP # Protocol type
       hosts:
-        - reviews.example.com
-        - "*"
+        - reviews.example.com # Accept traffic for this hostname
+        - "*" # Also accept any hostname (for testing)

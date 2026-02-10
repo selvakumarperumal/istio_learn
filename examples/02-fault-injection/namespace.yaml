@@ -1,7 +1,33 @@
-# Namespace for fault injection example
+# ============================================================================
+# NAMESPACE: Isolated environment for fault injection demo
+# ============================================================================
+# PURPOSE:
+#   Creates a dedicated namespace to keep fault injection resources
+#   separate from other workloads. All resources (Deployments, Services,
+#   VirtualServices, Gateway) are deployed into this namespace.
+#
+# WHY A SEPARATE NAMESPACE?
+#   - Isolation: Fault injection rules here won't affect other services
+#   - Easy cleanup: Delete the namespace to remove everything at once
+#   - Sidecar injection: The label below enables Istio proxy injection
+#     ONLY for pods in this namespace
+#
+# ISTIO SIDECAR INJECTION:
+#   The label "istio-injection: enabled" tells Istio's admission webhook
+#   to automatically inject the Envoy sidecar proxy into EVERY pod created
+#   in this namespace. Without this sidecar, fault injection cannot work
+#   because faults are injected at the proxy level, not in the application.
+#
+#   Pod without sidecar:  [Container]
+#   Pod with sidecar:     [Envoy Proxy] ↔ [Container]
+#                             ↑
+#                      Faults injected here
+# ============================================================================
 apiVersion: v1
 kind: Namespace
 metadata:
   name: fault-demo
   labels:
+    # This label triggers Istio's mutating webhook to inject Envoy sidecars
+    # into all pods created in this namespace. REQUIRED for fault injection.
     istio-injection: enabled

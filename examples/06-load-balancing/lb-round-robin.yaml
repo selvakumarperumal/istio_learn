@@ -1,5 +1,29 @@
 # ============================================================================
-# LOAD BALANCING: Round Robin (Default)
+# LOAD BALANCING: Round Robin (Default Algorithm)
+# ============================================================================
+# PURPOSE:
+#   Distribute traffic evenly in sequential order across all replicas.
+#   Each replica gets approximately equal traffic over time.
+#
+# HOW IT WORKS:
+#   Request 1 → Pod A
+#   Request 2 → Pod B
+#   Request 3 → Pod C
+#   Request 4 → Pod A (cycle repeats)
+#   ...and so on
+#
+# WHEN TO USE:
+#   - Default choice for most applications
+#   - When all pods have similar capacity
+#   - When you want predictable, even distribution
+#
+# WHEN NOT TO USE:
+#   - When pods have different processing capacities
+#   - When some requests are much heavier than others
+#   - When you need session affinity (sticky sessions)
+#
+# RELATED FILES:
+#   - deployment.yaml: Deploys 3 replicas to observe round-robin behavior
 # ============================================================================
 apiVersion: networking.istio.io/v1beta1
 kind: DestinationRule
@@ -7,7 +31,7 @@ metadata:
   name: httpbin-round-robin
   namespace: lb-demo
 spec:
-  host: httpbin
+  host: httpbin # Service to apply LB policy to
   trafficPolicy:
     loadBalancer:
-      simple: ROUND_ROBIN # Cycles through all endpoints
+      simple: ROUND_ROBIN # Sequential cycling through endpoints

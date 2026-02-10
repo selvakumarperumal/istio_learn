@@ -1,9 +1,43 @@
-# Fortio load testing client
+# ============================================================================
+# DEPLOYMENT & SERVICE: Fortio - Load Testing Client
+# ============================================================================
+# PURPOSE:
+#   Deploy Fortio, a powerful load testing tool from Istio project.
+#   Used to generate controlled traffic to trigger circuit breaker behavior.
+#
+# WHY FORTIO?
+#   - Can control exact number of concurrent connections (-c flag)
+#   - Shows detailed statistics including connection failures
+#   - Built to work seamlessly with Istio for testing
+#
+# HOW TO USE:
+#   1. Get the fortio pod name:
+#      $ kubectl get pods -n circuit-demo -l app=fortio
+#
+#   2. Generate load with 3 concurrent connections (breaker limit is 1):
+#      $ kubectl exec <fortio-pod> -- fortio load -c 3 -n 30 http://httpbin:80/get
+#
+#   3. Look for these in the output:
+#      - "Code 200" = Successful requests (got through)
+#      - "Code 503" = Circuit breaker tripped (rejected)
+#
+# EXPECTED BEHAVIOR:
+#   With maxConnections=1 and 3 concurrent connections:
+#   - ~33% succeed (within limit)
+#   - ~67% fail with 503 (overflow, circuit open)
+#
+# RELATED FILES:
+#   - destination-rule.yaml : Defines the limits that Fortio will exceed
+#   - deployment.yaml       : The httpbin target service
+# ============================================================================
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: fortio
   namespace: circuit-demo
+  labels:
+    app: fortio
 spec:
   replicas: 1
   selector:
@@ -12,18 +46,27 @@ spec:
   template:
     metadata:
       labels:
-        app: fortio
+        app: fortio # Must match service selector
     spec:
       containers:
         - name: fortio
-          image: fortio/fortio
+          image: fortio/fortio # Official Fortio image
           ports:
-            - containerPort: 8080
+            - containerPort: 8080 # Fortio's web UI port
+          # ──────────────────────────────────────────────────────────────────
+          # RESOURCES: Prevent pod starvation and ensure stable QoS
+          # ──────────────────────────────────────────────────────────────────
           resources:
-            limits:
+            requests: # Minimum guaranteed resources
+              memory: "128Mi"
+              cpu: "200m"
+            limits: # Maximum allowed resources
               memory: "128Mi"
               cpu: "200m"
 ---
+# ============================================================================
+# SERVICE: Exposes Fortio's web UI (optional, for browser access)
+# ============================================================================
 apiVersion: v1
 kind: Service
 metadata:

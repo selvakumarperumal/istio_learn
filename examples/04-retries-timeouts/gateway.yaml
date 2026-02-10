@@ -1,17 +1,34 @@
-# Gateway
+# ============================================================================
+# GATEWAY: External Traffic Entry Point for Retries/Timeouts Demo
+# ============================================================================
+# PURPOSE:
+#   Configures the Istio Ingress Gateway to accept external HTTP traffic
+#   for testing retry and timeout behaviors.
+#
+# RELATED FILES:
+#   - virtual-service.yaml : Defines retry/timeout policies
+#   - deployment.yaml      : The httpbin target service
+# ============================================================================
 apiVersion: networking.istio.io/v1beta1
 kind: Gateway
 metadata:
-  name: httpbin-gateway
+  name: httpbin-gateway # Referenced by VirtualService
   namespace: retry-demo
 spec:
+  # ─────────────────────────────────────────────────────────────────────────
+  # SELECTOR: Which Istio gateway workload handles this config
+  # ─────────────────────────────────────────────────────────────────────────
   selector:
-    istio: ingressgateway
+    istio: ingressgateway # Default Istio ingress gateway pods
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # SERVERS: Port and host configurations
+  # ─────────────────────────────────────────────────────────────────────────
   servers:
     - port:
-        number: 80
-        name: http
-        protocol: HTTP
+        number: 80 # Listen on HTTP port 80
+        name: http # Port name (required for Istio)
+        protocol: HTTP # Protocol type
       hosts:
-        - httpbin.example.com
-        - "*"
+        - httpbin.example.com # Accept traffic for this hostname
+        - "*" # Also accept any hostname (for testing)

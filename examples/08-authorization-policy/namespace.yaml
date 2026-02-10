@@ -1,6 +1,17 @@
+# ============================================================================
+# NAMESPACE: Isolated environment for authorization policy demo
+# ============================================================================
+# Creates a namespace for demonstrating Istio's AuthorizationPolicy feature.
+# Pods here get Envoy sidecars that enforce access control rules based on
+# service account identities, HTTP methods, paths, and more.
+#
+# ZERO TRUST MODEL:
+#   1. Start with deny-all → nothing can access httpbin
+#   2. Add specific allow rules → only authorized services can access it
+# ============================================================================
 apiVersion: v1
 kind: Namespace
 metadata:
   name: authz-demo
   labels:
-    istio-injection: enabled
+    istio-injection: enabled # Sidecars enforce AuthorizationPolicy rules

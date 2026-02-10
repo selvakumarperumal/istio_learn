@@ -1,9 +1,63 @@
-# Sample app to generate traces
+# ============================================================================
+# DEPLOYMENTS: httpbin + sleep for Distributed Tracing Demo
+# ============================================================================
+# PURPOSE:
+#   Deploy services to generate distributed traces. Traces help you
+#   understand request flow across services and identify latency issues.
+#
+# HOW DISTRIBUTED TRACING WORKS:
+#   1. Each request gets a unique trace ID at the ingress
+#   2. As the request flows through services, each "hop" creates a SPAN
+#   3. Spans are linked by parent-child relationships
+#   4. All spans for a request form a complete TRACE
+#
+# TRACE VISUALIZATION:
+#   ┌──────────────────────────────────────────────────────────────────────┐
+#   │  Trace ID: abc123                                                    │
+#   │  ├── Span 1: Client → Ingress Gateway (10ms)                        │
+#   │  │   ├── Span 2: Gateway → sleep service (5ms)                      │
+#   │  │   │   └── Span 3: sleep → httpbin service (3ms)                  │
+#   │  │   │       └── Span 4: httpbin processing (2ms)                   │
+#   └──────────────────────────────────────────────────────────────────────┘
+#
+# IMPORTANT: HEADER PROPAGATION
+#   For traces to work across service calls, your application MUST propagate
+#   these headers when making outbound requests:
+#   - x-request-id
+#   - x-b3-traceid
+#   - x-b3-spanid
+#   - x-b3-parentspanid
+#   - x-b3-sampled
+#   - x-b3-flags
+#
+#   Istio automatically generates these, but YOUR CODE must forward them!
+#
+# HOW TO TEST:
+#   1. Generate some traffic:
+#      $ kubectl exec deploy/sleep -n tracing-demo -- \
+#          curl -s http://httpbin:80/get
+#
+#   2. Open Jaeger UI:
+#      $ istioctl dashboard jaeger
+#
+#   3. Select service "httpbin.tracing-demo" and click "Find Traces"
+#
+# RELATED TOOLS:
+#   - Jaeger: Trace visualization and analysis
+#   - Zipkin: Alternative tracing backend
+#   - Kiali: Also shows traces alongside service graph
+# ============================================================================
+
+# ════════════════════════════════════════════════════════════════════════════
+# httpbin: Target Service (generates trace spans)
+# ════════════════════════════════════════════════════════════════════════════
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: httpbin
   namespace: tracing-demo
+  labels:
+    app: httpbin
 spec:
   replicas: 1
   selector:
@@ -19,6 +73,13 @@ spec:
           image: kennethreitz/httpbin
           ports:
             - containerPort: 80
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "200m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
 ---
 apiVersion: v1
 kind: Service
@@ -32,11 +93,16 @@ spec:
   selector:
     app: httpbin
 ---
+# ════════════════════════════════════════════════════════════════════════════
+# sleep: Client Service (initiates requests that create traces)
+# ════════════════════════════════════════════════════════════════════════════
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: sleep
   namespace: tracing-demo
+  labels:
+    app: sleep
 spec:
   replicas: 1
   selector:
@@ -51,3 +117,10 @@ spec:
         - name: sleep
           image: curlimages/curl
           command: ["sleep", "infinity"]
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "64Mi"
+              cpu: "100m"

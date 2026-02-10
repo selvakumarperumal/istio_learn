@@ -1,33 +1,80 @@
-# Production v1
+# ============================================================================
+# DEPLOYMENTS: Production (v1) and Canary (v2) for Traffic Mirroring Demo
+# ============================================================================
+# PURPOSE:
+#   Deploy two versions of httpbin to demonstrate traffic mirroring:
+#   - v1: Production version that handles real client traffic
+#   - v2: Canary version that receives mirrored (shadow) traffic
+#
+# TRAFFIC FLOW:
+#   All client requests → httpbin-v1 (response returned to client)
+#   Copy of all requests → httpbin-v2 (response discarded)
+#
+# WHY TWO SEPARATE DEPLOYMENTS?
+#   - Each can be independently scaled, updated, and monitored
+#   - v2 can run a completely different image/configuration
+#   - v2 failures don't affect v1 or clients
+#   - Allows side-by-side comparison of logs, metrics, behavior
+#
+# RELATED FILES:
+#   - destination-rule.yaml : Defines v1/v2 subsets using version labels
+#   - virtual-service.yaml  : Routes 100% to v1, mirrors to v2
+# ============================================================================
+
+# ════════════════════════════════════════════════════════════════════════════
+# VERSION 1: Production (receives all client traffic)
+# ════════════════════════════════════════════════════════════════════════════
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: httpbin-v1
   namespace: mirror-demo
+  labels:
+    app: httpbin
+    version: v1
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: httpbin
-      version: v1
+      version: v1 # Must match template labels
   template:
     metadata:
       labels:
-        app: httpbin
-        version: v1
+        app: httpbin # Selected by Service
+        version: v1 # Used by DestinationRule subset "v1"
     spec:
       containers:
         - name: httpbin
           image: kennethreitz/httpbin
           ports:
             - containerPort: 80
+          # ──────────────────────────────────────────────────────────────────
+          # RESOURCES: Prevent pod starvation
+          # ──────────────────────────────────────────────────────────────────
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "200m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
 ---
-# Canary v2 (receives mirrored traffic)
+# ════════════════════════════════════════════════════════════════════════════
+# VERSION 2: Canary (receives MIRRORED traffic only)
+# ════════════════════════════════════════════════════════════════════════════
+# NOTE: This version receives a COPY of all requests sent to v1.
+#       Responses from v2 are DISCARDED - they never reach the client.
+#       Use v2's logs and metrics to validate behavior under real traffic.
+# ════════════════════════════════════════════════════════════════════════════
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: httpbin-v2
   namespace: mirror-demo
+  labels:
+    app: httpbin
+    version: v2
 spec:
   replicas: 1
   selector:
@@ -38,14 +85,27 @@ spec:
     metadata:
       labels:
         app: httpbin
-        version: v2
+        version: v2 # Used by DestinationRule subset "v2"
     spec:
       containers:
         - name: httpbin
           image: kennethreitz/httpbin
           ports:
             - containerPort: 80
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "200m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
 ---
+# ============================================================================
+# SERVICE: Single service for both versions
+# ============================================================================
+# NOTE: Service selects all pods with app=httpbin (both v1 and v2).
+#       VirtualService + DestinationRule control which version gets traffic.
+# ============================================================================
 apiVersion: v1
 kind: Service
 metadata:
@@ -56,4 +116,4 @@ spec:
     - port: 80
       name: http
   selector:
-    app: httpbin
+    app: httpbin # Selects BOTH v1 and v2 pods

@@ -1,9 +1,46 @@
-# Two services to test mTLS between them
+# ============================================================================
+# DEPLOYMENTS: httpbin (Server) + sleep (Client) for mTLS Testing
+# ============================================================================
+# PURPOSE:
+#   Deploy two services to demonstrate mutual TLS (mTLS) between pods.
+#   - httpbin: Acts as the server that will be protected by mTLS
+#   - sleep: Acts as the client that will make requests to httpbin
+#
+# HOW TO TEST mTLS:
+#   1. Deploy with Istio sidecar injection enabled:
+#      $ kubectl apply -f deployment.yaml
+#
+#   2. Verify sidecars are injected (should show 2/2 containers):
+#      $ kubectl get pods -n mtls-demo
+#
+#   3. Test connectivity from sleep to httpbin:
+#      $ kubectl exec -n mtls-demo deploy/sleep -- curl http://httpbin:80/get
+#
+#   4. Apply STRICT mode and test again - should still work (both have sidecars)
+#
+#   5. Try from a pod WITHOUT sidecar - will be blocked in STRICT mode!
+#
+# VERIFYING mTLS IS ACTIVE:
+#   Use istioctl to check connection security:
+#   $ istioctl x describe pod <httpbin-pod-name> -n mtls-demo
+#
+#   Or check Kiali dashboard - connections show lock icons when mTLS is active.
+#
+# RELATED FILES:
+#   - peerauthentication-strict.yaml: Requires mTLS (blocks non-sidecar clients)
+#   - peerauthentication-permissive.yaml: Accepts both mTLS and plaintext
+# ============================================================================
+
+# ════════════════════════════════════════════════════════════════════════════
+# httpbin: Target Service (Server)
+# ════════════════════════════════════════════════════════════════════════════
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: httpbin
   namespace: mtls-demo
+  labels:
+    app: httpbin
 spec:
   replicas: 1
   selector:
@@ -12,13 +49,23 @@ spec:
   template:
     metadata:
       labels:
-        app: httpbin
+        app: httpbin # Sidecar auto-injected based on namespace
     spec:
       containers:
         - name: httpbin
           image: kennethreitz/httpbin
           ports:
             - containerPort: 80
+          # ──────────────────────────────────────────────────────────────────
+          # RESOURCES: Prevent pod starvation
+          # ──────────────────────────────────────────────────────────────────
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "200m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
 ---
 apiVersion: v1
 kind: Service
@@ -32,12 +79,19 @@ spec:
   selector:
     app: httpbin
 ---
-# Sleep client for testing
+# ════════════════════════════════════════════════════════════════════════════
+# sleep: Client Service (for making test requests)
+# ════════════════════════════════════════════════════════════════════════════
+# NOTE: This is a minimal container that stays running forever.
+#       Use kubectl exec to run curl commands from inside this pod.
+# ════════════════════════════════════════════════════════════════════════════
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: sleep
   namespace: mtls-demo
+  labels:
+    app: sleep
 spec:
   replicas: 1
   selector:
@@ -50,5 +104,12 @@ spec:
     spec:
       containers:
         - name: sleep
-          image: curlimages/curl
-          command: ["sleep", "infinity"]
+          image: curlimages/curl # Lightweight image with curl pre-installed
+          command: ["sleep", "infinity"] # Keep container running
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "64Mi"
+              cpu: "100m"

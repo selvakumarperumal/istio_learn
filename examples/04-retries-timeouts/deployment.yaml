@@ -1,9 +1,41 @@
-# httpbin for testing retries
+# ============================================================================
+# DEPLOYMENT & SERVICE: httpbin - Target for Retry/Timeout Testing
+# ============================================================================
+# PURPOSE:
+#   Deploy httpbin as the target service to test Istio's retry and timeout
+#   features. httpbin has endpoints that can simulate failures and delays.
+#
+# USEFUL httpbin ENDPOINTS FOR TESTING:
+#   /status/{code}  - Returns specified HTTP status code
+#                     Example: /status/503 returns 503 (triggers retry)
+#   /delay/{n}      - Delays response by n seconds
+#                     Example: /delay/5 delays 5s (may trigger timeout)
+#   /get            - Normal endpoint, returns request info
+#
+# TEST SCENARIOS:
+#   1. Test Retries (request fails, then succeeds on retry):
+#      $ curl http://httpbin:80/status/503
+#      # Istio will retry 3 times before returning 503 to client
+#
+#   2. Test Timeouts (request takes too long):
+#      $ curl http://httpbin:80/delay/15
+#      # With 10s total timeout, this will fail after 10s
+#
+#   3. Test perTryTimeout (each attempt times out):
+#      $ curl http://httpbin:80/delay/3
+#      # With 2s perTryTimeout, each attempt fails, all 3 retries exhausted
+#
+# RELATED FILES:
+#   - virtual-service.yaml : retry attempts=3, perTryTimeout=2s, timeout=10s
+# ============================================================================
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: httpbin
   namespace: retry-demo
+  labels:
+    app: httpbin
 spec:
   replicas: 1
   selector:
@@ -19,11 +51,20 @@ spec:
           image: kennethreitz/httpbin
           ports:
             - containerPort: 80
+          # ──────────────────────────────────────────────────────────────────
+          # RESOURCES: Prevent pod starvation and ensure stable QoS
+          # ──────────────────────────────────────────────────────────────────
           resources:
-            limits:
+            requests: # Minimum guaranteed resources
+              memory: "128Mi"
+              cpu: "200m"
+            limits: # Maximum allowed resources
               memory: "128Mi"
               cpu: "200m"
 ---
+# ============================================================================
+# SERVICE: Exposes httpbin to the mesh
+# ============================================================================
 apiVersion: v1
 kind: Service
 metadata:
@@ -33,6 +74,6 @@ spec:
   ports:
     - port: 80
       targetPort: 80
-      name: http
+      name: http # Named port for Istio
   selector:
     app: httpbin

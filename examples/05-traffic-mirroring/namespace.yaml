@@ -1,6 +1,19 @@
+# ============================================================================
+# NAMESPACE: Isolated environment for traffic mirroring demo
+# ============================================================================
+# PURPOSE:
+#   Creates a dedicated namespace for the traffic mirroring (shadow traffic)
+#   example. Both httpbin-v1 (production) and httpbin-v2 (canary) run here.
+#
+# ISTIO SIDECAR INJECTION:
+#   The "istio-injection: enabled" label injects Envoy sidecars into all pods.
+#   Traffic mirroring is performed by the Envoy sidecar — when a request
+#   arrives, the sidecar duplicates it and sends the copy to the mirror
+#   destination (v2). Without the sidecar, mirroring cannot work.
+# ============================================================================
 apiVersion: v1
 kind: Namespace
 metadata:
   name: mirror-demo
   labels:
-    istio-injection: enabled
+    istio-injection: enabled # REQUIRED for traffic mirroring to work

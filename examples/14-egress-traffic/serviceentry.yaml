@@ -1,5 +1,51 @@
 # ============================================================================
-# SERVICE ENTRY: Register external services
+# SERVICE ENTRY: Register External Service for Egress Control
+# ============================================================================
+# PURPOSE:
+#   Register httpbin.org as a known external service so Istio can:
+#   - Apply traffic policies (retries, timeouts, circuit breaking)
+#   - Enable mTLS for egress traffic (to external TLS endpoints)
+#   - Monitor and trace outbound requests
+#   - Enforce egress authorization policies
+#
+# WHY SERVICE ENTRIES?
+#   By default, Istio allows outbound traffic to external services.
+#   But without a ServiceEntry, you lose Istio features for that traffic.
+#
+#   WITHOUT ServiceEntry:
+#     Pod → Envoy → [passthrough, no Istio features] → Internet
+#
+#   WITH ServiceEntry:
+#     Pod → Envoy → [policies, metrics, tracing] → Internet
+#
+# LOCATION OPTIONS:
+#   MESH_EXTERNAL: Service is outside the mesh (most common for egress)
+#   MESH_INTERNAL: Service is inside mesh but not auto-discovered
+#
+# RESOLUTION OPTIONS:
+#   DNS:    Use DNS to resolve the hostname (most common)
+#   STATIC: Use explicitly provided endpoint IPs
+#   NONE:   Don't resolve, use original request destination
+#
+# HOW TO TEST:
+#   1. Deploy resources:
+#      $ ./deploy-all.sh
+#
+#   2. Make request to external service:
+#      $ kubectl exec deploy/sleep -n egress-demo -- \
+#          curl -s http://httpbin.org/get
+#
+#   3. View metrics for external traffic:
+#      $ istioctl dashboard kiali
+#      # Look for httpbin.org in the service graph
+#
+# ADVANCED: You can add VirtualService to apply policies:
+#   timeout: 5s
+#   retries: 3 attempts
+#   circuit breaking on external service errors
+#
+# RELATED FILES:
+#   - deployment.yaml: sleep pod to make outbound requests
 # ============================================================================
 apiVersion: networking.istio.io/v1beta1
 kind: ServiceEntry
@@ -7,14 +53,26 @@ metadata:
   name: httpbin-org
   namespace: egress-demo
 spec:
+  # ─────────────────────────────────────────────────────────────────────────
+  # HOSTS: External hostnames to register
+  # ─────────────────────────────────────────────────────────────────────────
   hosts:
-    - httpbin.org
+    - httpbin.org # External API endpoint
+  # ─────────────────────────────────────────────────────────────────────────
+  # PORTS: Protocols and ports for external access
+  # ─────────────────────────────────────────────────────────────────────────
   ports:
     - number: 80
       name: http
-      protocol: HTTP
+      protocol: HTTP # Plain HTTP
     - number: 443
       name: https
-      protocol: HTTPS
-  resolution: DNS
-  location: MESH_EXTERNAL # External service
+      protocol: HTTPS # TLS/HTTPS
+  # ─────────────────────────────────────────────────────────────────────────
+  # RESOLUTION: How to resolve the hostname
+  # ─────────────────────────────────────────────────────────────────────────
+  resolution: DNS # Use DNS to resolve httpbin.org
+  # ─────────────────────────────────────────────────────────────────────────
+  # LOCATION: Where the service is located
+  # ─────────────────────────────────────────────────────────────────────────
+  location: MESH_EXTERNAL # Service is outside the Istio mesh

@@ -1,6 +1,14 @@
+# ============================================================================
+# NAMESPACE: Isolated environment for load balancing demo
+# ============================================================================
+# Creates a namespace with Istio sidecar injection to demonstrate how
+# different load balancing algorithms distribute traffic across replicas.
+# Without the Envoy sidecar, Istio's LB algorithms cannot be used —
+# traffic would fall back to default kube-proxy round-robin.
+# ============================================================================
 apiVersion: v1
 kind: Namespace
 metadata:
   name: lb-demo
   labels:
-    istio-injection: enabled
+    istio-injection: enabled # REQUIRED for Istio load balancing algorithms

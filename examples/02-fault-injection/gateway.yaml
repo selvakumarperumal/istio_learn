@@ -1,17 +1,40 @@
-# Gateway for external access
+# ============================================================================
+# GATEWAY: External Traffic Entry Point for Fault Injection Demo
+# ============================================================================
+# PURPOSE:
+#   Configures the Istio Ingress Gateway to accept external HTTP traffic
+#   for testing fault injection scenarios (delays and aborts).
+#
+# HOW IT WORKS:
+#   External Request → Istio Ingress Gateway → This Gateway Config
+#                    → VirtualService (fault-delay/abort/combined)
+#                    → httpbin Pod (with injected faults)
+#
+# RELATED FILES:
+#   - fault-delay.yaml    : Injects latency to test timeout handling
+#   - fault-abort.yaml    : Returns HTTP errors to test error handling
+#   - fault-combined.yaml : Both delay and abort together
+# ============================================================================
 apiVersion: networking.istio.io/v1beta1
 kind: Gateway
 metadata:
-  name: httpbin-gateway
+  name: httpbin-gateway # Referenced by VirtualService configs
   namespace: fault-demo
 spec:
+  # ─────────────────────────────────────────────────────────────────────────
+  # SELECTOR: Which Istio gateway workload should handle this config
+  # ─────────────────────────────────────────────────────────────────────────
   selector:
-    istio: ingressgateway
+    istio: ingressgateway # Default Istio ingress gateway pods
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # SERVERS: Port and host configurations for incoming traffic
+  # ─────────────────────────────────────────────────────────────────────────
   servers:
     - port:
-        number: 80
-        name: http
-        protocol: HTTP
+        number: 80 # Listen on HTTP port 80
+        name: http # Port name (required for Istio)
+        protocol: HTTP # Protocol type
       hosts:
-        - httpbin.example.com
-        - "*"
+        - httpbin.example.com # Accept traffic for this hostname
+        - "*" # Also accept any hostname (for testing)

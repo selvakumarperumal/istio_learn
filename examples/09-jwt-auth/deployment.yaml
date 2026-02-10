@@ -1,9 +1,41 @@
-# Protected service
+# ============================================================================
+# DEPLOYMENT & SERVICE: httpbin - JWT-Protected Service
+# ============================================================================
+# PURPOSE:
+#   Deploy httpbin as the target service protected by JWT authentication.
+#   All requests to this service will require a valid JWT token.
+#
+# HOW TO TEST JWT AUTH:
+#   1. Deploy all resources:
+#      $ ./deploy-all.sh
+#
+#   2. Get the gateway URL:
+#      $ export GATEWAY=$(kubectl get svc istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+#
+#   3. Test WITHOUT token (should be rejected):
+#      $ curl -v http://$GATEWAY/headers
+#      # Result: 403 Forbidden
+#
+#   4. Get a sample JWT token:
+#      $ TOKEN=$(curl -s https://raw.githubusercontent.com/istio/istio/release-1.20/security/tools/jwt/samples/demo.jwt)
+#
+#   5. Test WITH valid token (should succeed):
+#      $ curl -H "Authorization: Bearer $TOKEN" http://$GATEWAY/headers
+#      # Result: 200 OK with headers echoed back
+#
+# RELATED FILES:
+#   - requestauthentication.yaml: Validates JWT signature and claims
+#   - authorizationpolicy.yaml: Requires valid JWT for access
+#   - gateway.yaml: Ingress configuration
+# ============================================================================
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: httpbin
   namespace: jwt-demo
+  labels:
+    app: httpbin
 spec:
   replicas: 1
   selector:
@@ -19,6 +51,16 @@ spec:
           image: kennethreitz/httpbin
           ports:
             - containerPort: 80
+          # ──────────────────────────────────────────────────────────────────
+          # RESOURCES: Prevent pod starvation
+          # ──────────────────────────────────────────────────────────────────
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "200m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
 ---
 apiVersion: v1
 kind: Service

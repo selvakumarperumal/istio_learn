@@ -1,5 +1,39 @@
 # ============================================================================
-# DENY ALL: Default deny policy
+# AUTHORIZATION POLICY: Deny All (Default Deny)
+# ============================================================================
+# PURPOSE:
+#   Block ALL traffic to httpbin by default. This implements the "zero trust"
+#   security model where you explicitly allow only what's needed.
+#
+# HOW AUTHZ POLICY WORKS:
+#   - Applied to workloads matching the selector (app: httpbin)
+#   - An empty spec with no rules = DENY ALL requests
+#   - Think of it as a firewall rule for your service
+#
+# POLICY LOGIC:
+#   ┌─────────────────────────────────────────────────────────────────────┐
+#   │  AuthorizationPolicy with:                                          │
+#   │    selector: app=httpbin                                            │
+#   │    spec: {} (empty)                                                 │
+#   │                                                                     │
+#   │  Result: ALL requests to httpbin are DENIED (403 Forbidden)        │
+#   └─────────────────────────────────────────────────────────────────────┘
+#
+# LAYERING POLICIES:
+#   Istio evaluates policies in this order:
+#   1. CUSTOM (external auth) - if present
+#   2. DENY policies - if ANY matches, request is denied
+#   3. ALLOW policies - if ANY matches, request is allowed
+#   4. Default behavior - if no ALLOW matches, request is denied
+#
+# USAGE PATTERN:
+#   1. Apply "deny-all" first to block everything
+#   2. Add specific "allow" policies for permitted access
+#   This is called "allowlist" or "whitelist" approach
+#
+# RELATED FILES:
+#   - authz-allow-specific.yaml: Opens access for specific service accounts
+#   - deployment.yaml: httpbin + sleep with ServiceAccounts
 # ============================================================================
 apiVersion: security.istio.io/v1beta1
 kind: AuthorizationPolicy
@@ -7,7 +41,13 @@ metadata:
   name: deny-all
   namespace: authz-demo
 spec:
+  # ─────────────────────────────────────────────────────────────────────────
+  # SELECTOR: Apply this policy to pods with app=httpbin
+  # ─────────────────────────────────────────────────────────────────────────
   selector:
     matchLabels:
       app: httpbin
-  # Empty spec = deny all requests to httpbin
+  # ─────────────────────────────────────────────────────────────────────────
+  # EMPTY SPEC = DENY ALL
+  # No action + no rules = all requests are denied by default
+  # ─────────────────────────────────────────────────────────────────────────

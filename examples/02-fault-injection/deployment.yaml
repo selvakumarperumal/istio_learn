@@ -1,38 +1,76 @@
-# Simple httpbin deployment for testing
+# ============================================================================
+# DEPLOYMENT & SERVICE: httpbin - HTTP Testing Service
+# ============================================================================
+# PURPOSE:
+#   Deploy httpbin, a simple HTTP service that echoes back request details.
+#   Perfect for testing fault injection because you can easily see when
+#   requests are delayed or fail.
+#
+# WHY httpbin?
+#   - Returns detailed request/response info for debugging
+#   - Has multiple endpoints: /get, /delay/{n}, /status/{code}, etc.
+#   - Lightweight and predictable behavior
+#
+# FAULT INJECTION DEMO:
+#   The httpbin service itself is healthy - Istio's VirtualService injects
+#   faults (delays/aborts) at the proxy level, NOT in the application.
+#
+#   Normal:    Client → Envoy Proxy → httpbin Pod → Response
+#   With Fault: Client → Envoy Proxy [INJECT FAULT] → Delayed/Error Response
+#
+# RELATED FILES:
+#   - fault-delay.yaml    : Adds 5s delay to 50% of requests
+#   - fault-abort.yaml    : Returns 503 error for 50% of requests
+#   - fault-combined.yaml : Both delay (30%) and abort (20%)
+# ============================================================================
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: httpbin
   namespace: fault-demo
+  labels:
+    app: httpbin # Application identifier
 spec:
-  replicas: 1
+  replicas: 1 # Single replica for demo
   selector:
     matchLabels:
-      app: httpbin
+      app: httpbin # Must match pod template labels
   template:
     metadata:
       labels:
-        app: httpbin
+        app: httpbin # Selected by Service and used by Istio
     spec:
       containers:
         - name: httpbin
-          image: kennethreitz/httpbin
+          image: kennethreitz/httpbin # Popular HTTP testing image
           ports:
-            - containerPort: 80
+            - containerPort: 80 # Default HTTP port
+          # ──────────────────────────────────────────────────────────────────
+          # RESOURCES: Prevent pod starvation and ensure stable QoS
+          # ──────────────────────────────────────────────────────────────────
           resources:
-            limits:
-              memory: "128Mi"
-              cpu: "200m"
+            requests: # Minimum guaranteed resources
+              memory: "128Mi" # 128 MiB memory reserved
+              cpu: "200m" # 200 millicores (0.2 CPU) reserved
+            limits: # Maximum allowed resources
+              memory: "128Mi" # Hard limit - OOMKilled if exceeded
+              cpu: "200m" # Soft limit - throttled if exceeded
 ---
+# ============================================================================
+# SERVICE: Exposes httpbin pods to the cluster
+# ============================================================================
 apiVersion: v1
 kind: Service
 metadata:
   name: httpbin
   namespace: fault-demo
+  labels:
+    app: httpbin
 spec:
   ports:
-    - port: 80
-      targetPort: 80
-      name: http
+    - port: 80 # Service port
+      targetPort: 80 # Container port to forward to
+      name: http # Named port (required for Istio routing)
   selector:
-    app: httpbin
+    app: httpbin # Selects pods with app=httpbin label

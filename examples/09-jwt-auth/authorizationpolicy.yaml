@@ -1,5 +1,41 @@
 # ============================================================================
-# AUTHORIZATION POLICY: Require valid JWT
+# AUTHORIZATION POLICY: Require Valid JWT Token
+# ============================================================================
+# PURPOSE:
+#   Enforce that all requests to httpbin MUST have a valid JWT token.
+#   Works together with RequestAuthentication to provide complete auth.
+#
+# WHY BOTH RequestAuthentication AND AuthorizationPolicy?
+#   - RequestAuthentication: VALIDATES tokens (checks signature, expiry)
+#   - AuthorizationPolicy:   ENFORCES tokens (rejects requests without valid tokens)
+#
+#   RequestAuthentication alone allows requests WITHOUT tokens to pass through!
+#   You need AuthorizationPolicy to actually REQUIRE tokens.
+#
+# POLICY LOGIC:
+#   ┌─────────────────────────────────────────────────────────────────────┐
+#   │                         REQUEST SCENARIOS                           │
+#   ├─────────────────────────────────────────────────────────────────────┤
+#   │  Valid JWT from trusted issuer    → ✅ ALLOWED                      │
+#   │  Invalid JWT (bad signature)      → ❌ 401 Unauthorized             │
+#   │  Expired JWT                       → ❌ 401 Unauthorized             │
+#   │  No JWT at all                     → ❌ 403 Forbidden (by this policy)│
+#   │  JWT from different issuer         → ❌ 401 Unauthorized             │
+#   └─────────────────────────────────────────────────────────────────────┘
+#
+# requestPrincipals FORMAT:
+#   Format: <issuer>/<subject> from the JWT claims
+#   Example: "testing@secure.istio.io/testing@secure.istio.io"
+#            = issuer: testing@secure.istio.io
+#            = subject: testing@secure.istio.io (from "sub" claim)
+#
+# WILDCARD OPTIONS:
+#   - requestPrincipals: ["*"]  → Any valid JWT from configured issuers
+#   - requestPrincipals: ["issuer/*"]  → Any subject from specific issuer
+#
+# RELATED FILES:
+#   - requestauthentication.yaml: Configures JWT validation rules
+#   - deployment.yaml: httpbin service that is protected
 # ============================================================================
 apiVersion: security.istio.io/v1beta1
 kind: AuthorizationPolicy
@@ -7,11 +43,22 @@ metadata:
   name: require-jwt
   namespace: jwt-demo
 spec:
+  # ─────────────────────────────────────────────────────────────────────────
+  # SELECTOR: Apply to httpbin pods
+  # ─────────────────────────────────────────────────────────────────────────
   selector:
     matchLabels:
       app: httpbin
+  # ─────────────────────────────────────────────────────────────────────────
+  # RULES: Define who can access (based on JWT claims)
+  # ─────────────────────────────────────────────────────────────────────────
   rules:
     - from:
         - source:
+            # ───────────────────────────────────────────────────────────────
+            # REQUIRE: Valid JWT with specific issuer/subject
+            # ───────────────────────────────────────────────────────────────
             requestPrincipals:
-              ["testing@secure.istio.io/testing@secure.istio.io"]
+              - "testing@secure.istio.io/testing@secure.istio.io"
+            # Alternative: Accept any valid JWT
+            # requestPrincipals: ["*"]

@@ -1,8 +1,41 @@
+# ============================================================================
+# DEPLOYMENT & SERVICE: httpbin - Target for Rate Limiting Demo
+# ============================================================================
+# PURPOSE:
+#   Deploy httpbin as the service protected by rate limiting.
+#   The EnvoyFilter applies a token bucket rate limit to this service.
+#
+# HOW TO TEST RATE LIMITING:
+#   1. Deploy all resources:
+#      $ ./deploy-all.sh
+#
+#   2. Send rapid burst of requests:
+#      $ for i in {1..15}; do
+#          echo "Request $i: $(curl -s -o /dev/null -w '%{http_code}' http://httpbin:80/get)"
+#        done
+#
+#   3. Expected output (with 10 req/min limit):
+#      Request 1: 200
+#      Request 2: 200
+#      ...
+#      Request 10: 200
+#      Request 11: 429  ← Rate limited
+#      Request 12: 429
+#      ...
+#
+#   4. Wait 60 seconds and try again (tokens refill)
+#
+# RELATED FILES:
+#   - envoyfilter.yaml: Defines the rate limit rules (10 req/min)
+# ============================================================================
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: httpbin
   namespace: ratelimit-demo
+  labels:
+    app: httpbin
 spec:
   replicas: 1
   selector:
@@ -11,13 +44,23 @@ spec:
   template:
     metadata:
       labels:
-        app: httpbin
+        app: httpbin # EnvoyFilter targets this label
     spec:
       containers:
         - name: httpbin
           image: kennethreitz/httpbin
           ports:
             - containerPort: 80
+          # ──────────────────────────────────────────────────────────────────
+          # RESOURCES: Prevent pod starvation
+          # ──────────────────────────────────────────────────────────────────
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "200m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
 ---
 apiVersion: v1
 kind: Service

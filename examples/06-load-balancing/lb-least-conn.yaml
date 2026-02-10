@@ -1,5 +1,37 @@
 # ============================================================================
-# LOAD BALANCING: Least Connections
+# LOAD BALANCING: Least Connections (Adaptive)
+# ============================================================================
+# PURPOSE:
+#   Route to the endpoint with the fewest active connections. This is
+#   "smart" load balancing that adapts to actual load in real-time.
+#
+# HOW IT WORKS:
+#   Pod A: 5 active connections
+#   Pod B: 2 active connections  ← New request goes here!
+#   Pod C: 8 active connections
+#
+#   As connections complete, the decision updates dynamically.
+#
+# WHEN TO USE:
+#   - When request processing times vary significantly
+#   - When pods have different capacities
+#   - When you want to avoid overloading slow pods
+#   - High throughput scenarios with variable request durations
+#
+# WHEN NOT TO USE:
+#   - For very short requests (overhead may not be worth it)
+#   - When you need session affinity (use consistentHash)
+#   - When even distribution is preferred over adaptive (use ROUND_ROBIN)
+#
+# EXAMPLE SCENARIO:
+#   Pod A is processing a heavy database query (10 seconds)
+#   Pod B and C are handling quick requests (100ms each)
+#
+#   With ROUND_ROBIN: Requests pile up waiting for Pod A
+#   With LEAST_CONN: New requests automatically go to B and C
+#
+# RELATED FILES:
+#   - deployment.yaml: Deploys 3 replicas to observe adaptive behavior
 # ============================================================================
 apiVersion: networking.istio.io/v1beta1
 kind: DestinationRule
@@ -10,4 +42,4 @@ spec:
   host: httpbin
   trafficPolicy:
     loadBalancer:
-      simple: LEAST_CONN # Prefer endpoints with fewer connections
+      simple: LEAST_CONN # Route to endpoint with fewest connections

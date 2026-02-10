@@ -1,5 +1,45 @@
 # ============================================================================
-# PEER AUTHENTICATION: Permissive mTLS (accepts both)
+# PEER AUTHENTICATION: Permissive mTLS (Migration Mode)
+# ============================================================================
+# PURPOSE:
+#   Accept BOTH mTLS and plain HTTP connections. This is the recommended
+#   mode during migration to full mTLS, allowing gradual adoption.
+#
+# WHY PERMISSIVE MODE?
+#   During mesh adoption, you may have:
+#   - Services WITH sidecars (can do mTLS)
+#   - Services WITHOUT sidecars (can only do plain HTTP)
+#   - External services calling into the mesh
+#
+#   Permissive mode allows all of these to work simultaneously.
+#
+# TRAFFIC ACCEPTANCE:
+#   ┌─────────────────────────────────────────────────────────────────────┐
+#   │                      PERMISSIVE MODE                                 │
+#   ├─────────────────────────────────────────────────────────────────────┤
+#   │  Client with sidecar (mTLS)      →  ✅ ACCEPTED (encrypted)         │
+#   │  Client without sidecar (HTTP)   →  ✅ ACCEPTED (plaintext)         │
+#   │  External service (HTTP)         →  ✅ ACCEPTED (plaintext)         │
+#   └─────────────────────────────────────────────────────────────────────┘
+#
+# vs STRICT MODE:
+#   ┌─────────────────────────────────────────────────────────────────────┐
+#   │                        STRICT MODE                                   │
+#   ├─────────────────────────────────────────────────────────────────────┤
+#   │  Client with sidecar (mTLS)      →  ✅ ACCEPTED                      │
+#   │  Client without sidecar (HTTP)   →  ❌ REJECTED                      │
+#   │  External service (HTTP)         →  ❌ REJECTED                      │
+#   └─────────────────────────────────────────────────────────────────────┘
+#
+# MIGRATION PATH:
+#   1. Start with PERMISSIVE mode
+#   2. Gradually inject sidecars into all services
+#   3. Monitor that all traffic is using mTLS (Kiali shows this)
+#   4. Switch to STRICT mode once 100% of traffic is mTLS
+#
+# RELATED FILES:
+#   - peerauthentication-strict.yaml: Final state after migration
+#   - deployment.yaml: httpbin + sleep to test mTLS
 # ============================================================================
 apiVersion: security.istio.io/v1beta1
 kind: PeerAuthentication
@@ -8,4 +48,4 @@ metadata:
   namespace: mtls-demo
 spec:
   mtls:
-    mode: PERMISSIVE # Accept both plain HTTP and mTLS
+    mode: PERMISSIVE # Accept BOTH mTLS and plain HTTP

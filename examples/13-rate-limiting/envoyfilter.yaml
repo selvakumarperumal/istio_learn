@@ -1,5 +1,49 @@
 # ============================================================================
-# ENVOY FILTER: Local Rate Limiting (10 requests per minute)
+# ENVOY FILTER: Local Rate Limiting (Token Bucket Algorithm)
+# ============================================================================
+# PURPOSE:
+#   Limit the rate of incoming requests to prevent service overload.
+#   This uses local (per-pod) rate limiting with a token bucket algorithm.
+#
+# TOKEN BUCKET ALGORITHM EXPLAINED:
+#   ┌─────────────────────────────────────────────────────────────────────┐
+#   │                        TOKEN BUCKET                                 │
+#   │  ┌─────────────────────────────────────────────────────────────┐    │
+#   │  │  [●][●][●][●][●][●][●][●][●][●]  ← max_tokens: 10          │    │
+#   │  └─────────────────────────────────────────────────────────────┘    │
+#   │                                                                     │
+#   │  • Each request consumes 1 token                                   │
+#   │  • Every 60 seconds, bucket refills with 10 tokens                 │
+#   │  • If bucket is empty → Request is rejected (429 Too Many Requests)│
+#   │  • Allows bursts up to max_tokens                                  │
+#   └─────────────────────────────────────────────────────────────────────┘
+#
+# THIS CONFIGURATION:
+#   - max_tokens: 10       → Can handle burst of 10 requests
+#   - tokens_per_fill: 10  → Refill 10 tokens each interval
+#   - fill_interval: 60s   → Refill every 60 seconds
+#   - Result: ~10 requests per minute per pod
+#
+# LOCAL vs GLOBAL RATE LIMITING:
+#   LOCAL (this example):
+#     - Rate limit applied per pod individually
+#     - 3 pods with 10 req/min = 30 req/min total possible
+#     - Simpler, no external dependency
+#
+#   GLOBAL (requires external service):
+#     - Central rate limit shared across all pods
+#     - 10 req/min means 10 total regardless of pod count
+#     - Requires Redis or rate limit service
+#
+# HOW TO TEST:
+#   1. Apply the EnvoyFilter and deployment
+#   2. Send rapid requests:
+#      $ for i in {1..15}; do curl http://httpbin:80/get; done
+#   3. First 10 should succeed, remaining should get 429
+#   4. Check for header: x-local-rate-limit: true
+#
+# RELATED FILES:
+#   - deployment.yaml: httpbin service that is rate limited
 # ============================================================================
 apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
@@ -7,13 +51,19 @@ metadata:
   name: local-ratelimit
   namespace: ratelimit-demo
 spec:
+  # ─────────────────────────────────────────────────────────────────────────
+  # WORKLOAD SELECTOR: Apply to pods with app=httpbin
+  # ─────────────────────────────────────────────────────────────────────────
   workloadSelector:
     labels:
       app: httpbin
   configPatches:
+    # ─────────────────────────────────────────────────────────────────────
+    # FILTER PATCH: Insert rate limit filter into HTTP processing chain
+    # ─────────────────────────────────────────────────────────────────────
     - applyTo: HTTP_FILTER
       match:
-        context: SIDECAR_INBOUND
+        context: SIDECAR_INBOUND # Apply to incoming requests
         listener:
           filterChain:
             filter:
@@ -21,7 +71,7 @@ spec:
               subFilter:
                 name: envoy.filters.http.router
       patch:
-        operation: INSERT_BEFORE
+        operation: INSERT_BEFORE # Insert before router (so it runs first)
         value:
           name: envoy.filters.http.local_ratelimit
           typed_config:
@@ -29,22 +79,31 @@ spec:
             type_url: type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
             value:
               stat_prefix: http_local_rate_limiter
+              # ───────────────────────────────────────────────────────────
+              # TOKEN BUCKET: Controls the rate limit
+              # ───────────────────────────────────────────────────────────
               token_bucket:
-                max_tokens: 10 # Max 10 requests burst
-                tokens_per_fill: 10 # Refill 10 tokens
-                fill_interval: 60s # Every 60 seconds
+                max_tokens: 10 # Maximum burst size
+                tokens_per_fill: 10 # Tokens added per refill
+                fill_interval: 60s # Refill interval
+              # ───────────────────────────────────────────────────────────
+              # ENFORCEMENT: Enable rate limiting for all requests
+              # ───────────────────────────────────────────────────────────
               filter_enabled:
                 runtime_key: local_rate_limit_enabled
                 default_value:
-                  numerator: 100
+                  numerator: 100 # 100% of requests evaluated
                   denominator: HUNDRED
               filter_enforced:
                 runtime_key: local_rate_limit_enforced
                 default_value:
-                  numerator: 100
+                  numerator: 100 # 100% enforcement
                   denominator: HUNDRED
+              # ───────────────────────────────────────────────────────────
+              # RESPONSE HEADERS: Add header to rate-limited responses
+              # ───────────────────────────────────────────────────────────
               response_headers_to_add:
                 - append: false
                   header:
                     key: x-local-rate-limit
-                    value: "true"
+                    value: "true" # Helps identify rate-limited requests

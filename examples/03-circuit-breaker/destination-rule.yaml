@@ -1,32 +1,133 @@
 # ============================================================================
-# CIRCUIT BREAKER: Outlier Detection Configuration
+# CIRCUIT BREAKER: Connection Pool + Outlier Detection Configuration
 # ============================================================================
+# PURPOSE:
+#   Configures circuit breaking for the httpbin service using TWO mechanisms:
+#     1. CONNECTION POOL: Limits concurrent connections and pending requests
+#     2. OUTLIER DETECTION: Ejects unhealthy hosts based on error rates
 #
-# This DestinationRule configures circuit breaking using outlier detection
+#   Together, these protect the system from cascading failures when httpbin
+#   becomes overloaded or starts returning errors.
 #
+# HOW CIRCUIT BREAKING WORKS IN ISTIO:
+#   Istio implements circuit breaking in the Envoy sidecar proxy. Unlike
+#   application-level circuit breakers (like Netflix Hystrix), this works
+#   at the NETWORK level — no code changes needed.
+#
+#   ┌──────────┐     ┌────────────────────────────────────┐     ┌────────┐
+#   │  Client  │────▶│  Envoy Proxy (Circuit Breaker)     │────▶│ httpbin│
+#   └──────────┘     │                                    │     └────────┘
+#                    │  Connection Pool Check:             │
+#                    │    Active connections > 1? REJECT   │
+#                    │    Pending requests > 1? REJECT     │
+#                    │                                    │
+#                    │  Outlier Detection Check:           │
+#                    │    Host had 1+ 5xx errors? EJECT   │
+#                    │    Ejected → fail fast for 30s     │
+#                    └────────────────────────────────────┘
+#
+# CIRCUIT BREAKER STATES (State Machine):
+#   CLOSED (normal):
+#     → All requests forwarded to httpbin
+#     → Envoy monitors for errors
+#
+#   OPEN (tripped):
+#     → Triggered by: connection pool overflow OR outlier detection
+#     → Requests immediately get 503 ("upstream_rq_pending_overflow")
+#     → Remains open for baseEjectionTime (30s)
+#
+#   HALF-OPEN (recovery):
+#     → After ejection time expires, Envoy tests with a few requests
+#     → If successful → move to CLOSED
+#     → If still failing → move back to OPEN (with longer ejection)
+#
+# WHY TWO MECHANISMS?
+#   - Connection Pool: Prevents OVERLOAD (too many simultaneous requests)
+#   - Outlier Detection: Prevents CASCADING FAILURES (backend is broken)
+#   - Together: Complete protection against both scenarios
+#
+# TESTING:
+#   # Trigger connection pool overflow:
+#   kubectl exec <fortio-pod> -n circuit-demo -c fortio -- \
+#     /usr/bin/fortio load -c 3 -n 30 -qps 0 http://httpbin:80/get
+#
+#   # With maxConnections=1 and 3 concurrent connections:
+#   # ~33% succeed (within limit), ~67% get 503 (overflow)
+#
+# RELATED FILES:
+#   - deployment.yaml    : httpbin service (the protected target)
+#   - fortio-client.yaml : Load generator to trigger the breaker
+# ============================================================================
+
 apiVersion: networking.istio.io/v1beta1
 kind: DestinationRule
 metadata:
   name: httpbin-circuit-breaker
   namespace: circuit-demo
 spec:
-  host: httpbin
+  host: httpbin # Target service — must match the Kubernetes Service name
+
   trafficPolicy:
     # ═══════════════════════════════════════════════════════════════════════
-    # CONNECTION POOL: Limit concurrent connections
+    # CONNECTION POOL: Limit concurrent connections and requests
     # ═══════════════════════════════════════════════════════════════════════
+    # These limits are enforced PER ENVOY PROXY instance (each client-side
+    # sidecar maintains its own pool). When limits are exceeded, the proxy
+    # returns 503 with the flag "upstream_rq_pending_overflow".
+    #
+    # IMPORTANT: These values are intentionally LOW for demo purposes.
+    # In production, typical values are 100-1000+ depending on the service.
     connectionPool:
       tcp:
-        maxConnections: 1 # Max connections to httpbin
+        # maxConnections: Maximum number of TCP connections to httpbin.
+        # If a new request arrives and all connections are in use, it
+        # goes to the pending queue (limited by http1MaxPendingRequests).
+        maxConnections: 1 # Only 1 TCP connection allowed (demo: very strict)
+
       http:
-        http1MaxPendingRequests: 1 # Max pending requests
-        maxRequestsPerConnection: 1 # Max requests per connection
+        # http1MaxPendingRequests: Maximum requests waiting for a connection.
+        # If both the connection AND the pending queue are full, the request
+        # is immediately rejected with a 503.
+        http1MaxPendingRequests: 1 # Only 1 request can wait in queue
+
+        # maxRequestsPerConnection: After this many requests on a connection,
+        # the connection is closed and re-established. Set to 1 to simulate
+        # connection churn. Set higher in production for connection reuse.
+        maxRequestsPerConnection: 1 # Close connection after each request
 
     # ═══════════════════════════════════════════════════════════════════════
-    # OUTLIER DETECTION: Circuit breaker settings
+    # OUTLIER DETECTION: Eject unhealthy hosts based on error rates
     # ═══════════════════════════════════════════════════════════════════════
+    # Outlier detection tracks the health of each upstream host (pod).
+    # If a host returns too many errors, it is "ejected" (removed from the
+    # load balancing pool) for a period of time.
+    #
+    # This is the "classic" circuit breaker pattern:
+    #   Errors accumulate → Circuit opens → Requests fail fast → Wait →
+    #   Test recovery → Circuit closes (or stays open)
     outlierDetection:
-      consecutive5xxErrors: 1 # Open circuit after 1 error
-      interval: 1s # Check every 1 second
-      baseEjectionTime: 30s # Eject for minimum 30 seconds
-      maxEjectionPercent: 100 # Allow ejecting all hosts
+      # consecutive5xxErrors: How many consecutive 5xx errors trigger ejection.
+      # Lower = more aggressive (ejects faster, but may eject on transient errors)
+      # Higher = more tolerant (waits longer, but delays protection)
+      # Production recommendation: 3-5
+      consecutive5xxErrors: 1 # Eject after just 1 error (aggressive for demo)
+
+      # interval: How often Envoy checks hosts for outlier behavior.
+      # Shorter = faster detection but more CPU overhead
+      # Production recommendation: 10s-30s
+      interval: 1s # Check every 1 second (aggressive for demo)
+
+      # baseEjectionTime: How long a host stays ejected (minimum).
+      # Ejection time increases with each consecutive ejection:
+      #   1st ejection = baseEjectionTime × 1 = 30s
+      #   2nd ejection = baseEjectionTime × 2 = 60s
+      #   3rd ejection = baseEjectionTime × 3 = 90s (caps at maxEjectionTime)
+      # Production recommendation: 30s-300s
+      baseEjectionTime: 30s # Eject for at least 30 seconds
+
+      # maxEjectionPercent: Maximum percentage of hosts that can be ejected
+      # at the same time. Safety valve to prevent ALL hosts from being ejected.
+      #   100 = allow ejecting ALL hosts (service completely unavailable)
+      #    50 = always keep at least 50% of hosts available
+      # Production recommendation: 10-50 (never 100 in critical services)
+      maxEjectionPercent: 100 # Allow ejecting all hosts (demo only!)

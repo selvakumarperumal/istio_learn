@@ -1,6 +1,16 @@
+# ============================================================================
+# NAMESPACE: Isolated environment for mTLS demo
+# ============================================================================
+# Creates a namespace with Istio sidecar injection for demonstrating
+# mutual TLS between services. The sidecars handle certificate management
+# and encryption automatically — the application code uses plain HTTP.
+#
+# IMPORTANT: When using STRICT mTLS mode, only pods with sidecars can
+# communicate. Pods without an Envoy sidecar will be BLOCKED.
+# ============================================================================
 apiVersion: v1
 kind: Namespace
 metadata:
   name: mtls-demo
   labels:
-    istio-injection: enabled
+    istio-injection: enabled # Injects sidecars that handle mTLS encryption

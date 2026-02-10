@@ -1,6 +1,13 @@
+# ============================================================================
+# NAMESPACE: Isolated environment for rate limiting demo
+# ============================================================================
+# Istio sidecar injection is required because the EnvoyFilter applies
+# the rate limit configuration directly to each pod's Envoy sidecar.
+# Without the sidecar, the EnvoyFilter has no Envoy proxy to configure.
+# ============================================================================
 apiVersion: v1
 kind: Namespace
 metadata:
   name: ratelimit-demo
   labels:
-    istio-injection: enabled
+    istio-injection: enabled # REQUIRED — EnvoyFilter configures the sidecar

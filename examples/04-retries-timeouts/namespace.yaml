@@ -1,6 +1,13 @@
+# ============================================================================
+# NAMESPACE: Isolated environment for retries and timeouts demo
+# ============================================================================
+# The "istio-injection: enabled" label ensures Envoy sidecars are injected
+# into all pods. Retry and timeout policies are enforced by the sidecar —
+# without it, the VirtualService retry/timeout settings have no effect.
+# ============================================================================
 apiVersion: v1
 kind: Namespace
 metadata:
   name: retry-demo
   labels:
-    istio-injection: enabled
+    istio-injection: enabled # REQUIRED for retry/timeout policies to work

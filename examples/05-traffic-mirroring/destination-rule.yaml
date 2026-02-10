@@ -1,14 +1,38 @@
+# ============================================================================
+# DESTINATION RULE: Subset Definitions for v1 and v2
+# ============================================================================
+# PURPOSE:
+#   Define subsets (v1 and v2) that can be used by VirtualService for routing.
+#   This is required for traffic mirroring to distinguish between versions.
+#
+# HOW SUBSETS WORK:
+#   VirtualService says "route to subset: v2"
+#       ↓
+#   DestinationRule translates: "subset v2 = pods with label version=v2"
+#       ↓
+#   Envoy selects pods matching that label
+#
+# RELATED FILES:
+#   - deployment.yaml       : Defines pods with version=v1 and version=v2 labels
+#   - virtual-service.yaml  : Uses these subsets for routing and mirroring
+# ============================================================================
 apiVersion: networking.istio.io/v1beta1
 kind: DestinationRule
 metadata:
   name: httpbin
   namespace: mirror-demo
 spec:
-  host: httpbin
+  host: httpbin # Service name this rule applies to
   subsets:
+    # ───────────────────────────────────────────────────────────────────────
+    # v1 SUBSET: Production version (receives actual client responses)
+    # ───────────────────────────────────────────────────────────────────────
     - name: v1
       labels:
-        version: v1
+        version: v1 # Matches pods with version=v1 label
+    # ───────────────────────────────────────────────────────────────────────
+    # v2 SUBSET: Canary version (receives mirrored traffic, no client impact)
+    # ───────────────────────────────────────────────────────────────────────
     - name: v2
       labels:
-        version: v2
+        version: v2 # Matches pods with version=v2 label

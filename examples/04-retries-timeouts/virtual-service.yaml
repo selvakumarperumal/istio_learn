@@ -1,29 +1,124 @@
 # ============================================================================
-# RETRIES AND TIMEOUTS CONFIGURATION
+# VIRTUAL SERVICE: Retries and Timeouts Configuration
 # ============================================================================
+# PURPOSE:
+#   Demonstrates Istio's automatic retry and timeout capabilities.
+#   When a request fails, Istio can automatically retry it without
+#   application-level changes. Timeouts prevent requests from hanging
+#   indefinitely when services are slow.
+#
+# HOW RETRIES WORK IN ENVOY:
+#   ┌────────┐     ┌────────────────────────────────────────────┐     ┌─────────┐
+#   │ Client │────▶│ Envoy Proxy                                │────▶│ httpbin │
+#   └────────┘     │                                            │     └─────────┘
+#                  │  Attempt 1: Send request                   │
+#                  │    ← Got 503? Check retryOn conditions     │
+#                  │    ← Matches "5xx"? YES → retry!           │
+#                  │                                            │
+#                  │  Attempt 2: Wait (exponential backoff) →   │
+#                  │    Send request again                      │
+#                  │    ← Got 503 again? Still matches → retry! │
+#                  │                                            │
+#                  │  Attempt 3: Wait (longer backoff) →        │
+#                  │    Send request again                      │
+#                  │    ← Got 200? SUCCESS → return to client   │
+#                  │    ← Got 503? No more attempts → return 503│
+#                  └────────────────────────────────────────────┘
+#
+# TIMEOUT vs PER-TRY TIMEOUT:
+#   ┌─────────────── timeout: 10s (overall budget) ──────────────────┐
+#   │                                                                 │
+#   │  ┌── perTryTimeout: 2s ──┐  ┌── perTryTimeout: 2s ──┐        │
+#   │  │  Attempt 1            │  │  Attempt 2            │  ...    │
+#   │  └───────────────────────┘  └───────────────────────┘        │
+#   │                                                                 │
+#   │  If total time exceeds 10s, ALL retries are cancelled           │
+#   └─────────────────────────────────────────────────────────────────┘
+#
+# RETRY CONDITIONS (retryOn):
+#   - 5xx              : Retry on any server error (500, 502, 503, 504)
+#   - reset            : Retry when upstream resets the connection
+#   - connect-failure  : Retry when TCP connection fails entirely
+#   - retriable-4xx    : Retry on HTTP 409 Conflict only
+#   - gateway-error    : Retry on 502, 503, 504 only (subset of 5xx)
+#   - refused-stream   : Retry when upstream sends REFUSED_STREAM
+#
+# BACKOFF STRATEGY:
+#   Istio uses exponential backoff between retries:
+#     Retry 1: wait 25ms
+#     Retry 2: wait 50ms (25ms × 2)
+#     Retry 3: wait 100ms (50ms × 2)
+#   This prevents overwhelming an already-struggling service.
+#
+# TESTING:
+#   # Test 1: Retries on 503 (all attempts fail → returns 503)
+#   curl -v http://httpbin:80/status/503
+#
+#   # Test 2: Timeout exceeded (delay > timeout → returns 504)
+#   time curl http://httpbin:80/delay/15
+#
+#   # Test 3: perTryTimeout (delay > perTryTimeout, exhausts retries)
+#   time curl http://httpbin:80/delay/3
+#
+# RELATED FILES:
+#   - deployment.yaml : The httpbin target service
+#   - gateway.yaml    : External access configuration
+# ============================================================================
+
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 metadata:
   name: httpbin-resilience
   namespace: retry-demo
 spec:
+  # ─────────────────────────────────────────────────────────────────────────
+  # HOSTS: Which services this VirtualService applies to
+  # ─────────────────────────────────────────────────────────────────────────
   hosts:
-    - httpbin
-    - httpbin.example.com
+    - httpbin # Internal mesh traffic (pod-to-pod)
+    - httpbin.example.com # External traffic via Istio Ingress Gateway
   gateways:
-    - httpbin-gateway
-    - mesh
+    - httpbin-gateway # External traffic (defined in gateway.yaml)
+    - mesh # Internal mesh traffic (built-in keyword)
+
   http:
     # ═══════════════════════════════════════════════════════════════════════
-    # Request with retries enabled
+    # ROUTE: All traffic with retry and timeout policies
     # ═══════════════════════════════════════════════════════════════════════
     - route:
         - destination:
             host: httpbin
             port:
               number: 80
+
+      # ─────────────────────────────────────────────────────────────────────
+      # RETRY POLICY: Automatic retries on failure
+      # ─────────────────────────────────────────────────────────────────────
+      # Retries are handled entirely by the Envoy proxy. The application
+      # sees only one request — retries are invisible to it.
       retries:
-        attempts: 3 # Retry up to 3 times
-        perTryTimeout: 2s # Each attempt times out after 2s
+        # attempts: Maximum number of retry attempts (NOT including the
+        # initial request). So attempts=3 means up to 4 total tries.
+        attempts: 3 # Retry up to 3 times after the initial failure
+
+        # perTryTimeout: Maximum time to wait for EACH individual attempt.
+        # If a single attempt exceeds this, it is cancelled and the next
+        # retry is triggered. Must be <= timeout.
+        # Tip: Set this shorter than your service's expected response time
+        perTryTimeout: 2s # Each attempt times out after 2 seconds
+
+        # retryOn: Comma-separated list of conditions that trigger a retry.
+        # Only matching conditions cause retries; others return immediately.
         retryOn: 5xx,reset,connect-failure,retriable-4xx
-      timeout: 10s # Total request timeout
+
+      # ─────────────────────────────────────────────────────────────────────
+      # TIMEOUT: Overall request timeout (includes ALL retries)
+      # ─────────────────────────────────────────────────────────────────────
+      # This is the maximum total time from when the client sends the
+      # request to when it receives a response (or timeout error).
+      # If retries are still in progress when this expires, they are
+      # cancelled and a 504 Gateway Timeout is returned.
+      #
+      # IMPORTANT: timeout should be > (attempts + 1) × perTryTimeout
+      #   Here: 10s > (3 + 1) × 2s = 8s ✓ (allows time for all retries)
+      timeout: 10s # Total time budget for request + all retries

@@ -1,5 +1,41 @@
 # ============================================================================
-# LOAD BALANCING: Consistent Hash (Session Affinity)
+# LOAD BALANCING: Consistent Hash (Session Affinity / Sticky Sessions)
+# ============================================================================
+# PURPOSE:
+#   Route requests from the same user/session to the same pod consistently.
+#   Uses a hash function to map a key (header, cookie, IP) to a specific pod.
+#
+# HOW IT WORKS:
+#   User A (x-user-id: user-123) → HASH("user-123") → Pod B (always!)
+#   User B (x-user-id: user-456) → HASH("user-456") → Pod C (always!)
+#   User C (x-user-id: user-789) → HASH("user-789") → Pod A (always!)
+#
+#   Same user = Same hash = Same pod (until pods change)
+#
+# HASH KEY OPTIONS (pick ONE):
+#   httpHeaderName: "x-user-id"    # Hash based on HTTP header value
+#   httpCookie:                     # Hash based on cookie value
+#     name: "session-id"
+#     ttl: "3600s"
+#   useSourceIp: true              # Hash based on client IP address
+#
+# WHEN TO USE:
+#   - Applications with in-memory session state
+#   - Shopping carts stored in local memory
+#   - WebSocket connections (must stay on same pod)
+#   - Caching per-user data locally on pod
+#
+# WHEN NOT TO USE:
+#   - Stateless applications (all pods are equivalent)
+#   - When using shared session storage (Redis, database)
+#   - When you want true load distribution
+#
+# IMPORTANT:
+#   If pods are added/removed, some users will be remapped to different pods.
+#   This is called "rehashing" - consistent hashing minimizes the disruption.
+#
+# RELATED FILES:
+#   - deployment.yaml: Deploys 3 replicas for hash distribution
 # ============================================================================
 apiVersion: networking.istio.io/v1beta1
 kind: DestinationRule
@@ -11,4 +47,13 @@ spec:
   trafficPolicy:
     loadBalancer:
       consistentHash:
-        httpHeaderName: x-user-id # Same user-id always goes to same pod
+        # ───────────────────────────────────────────────────────────────────
+        # HASH KEY: Use the x-user-id header to determine destination
+        # ───────────────────────────────────────────────────────────────────
+        # Alternative options:
+        #   httpCookie:
+        #     name: "session-id"
+        #     ttl: "3600s"          # Create cookie if not present
+        #   useSourceIp: true       # Hash client IP address
+        # ───────────────────────────────────────────────────────────────────
+        httpHeaderName: x-user-id # Same x-user-id → Same pod

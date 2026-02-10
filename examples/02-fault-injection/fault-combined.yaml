@@ -1,30 +1,117 @@
 # ============================================================================
-# FAULT INJECTION: Combined - Both delay AND abort
+# FAULT INJECTION: Combined - Both delay AND abort together
 # ============================================================================
+# PURPOSE:
+#   Applies BOTH delay and abort faults simultaneously to simulate a
+#   realistic degraded service scenario. In production, services rarely
+#   exhibit just one failure mode - they often become slow AND return
+#   errors at the same time.
+#
+# WHY COMBINE DELAY + ABORT?
+#   Real-world degradations are messy. A struggling service might:
+#     - Respond slowly for most requests (delay)
+#     - Completely fail for some requests (abort)
+#     - For example: a database under heavy load might timeout on some
+#       queries (delay) while rejecting new connections (abort)
+#
+#   Combined faults let you test:
+#     1. How the app behaves when BOTH slow + failing responses occur
+#     2. Whether timeout settings interact correctly with retry policies
+#     3. If circuit breakers account for mixed failure signals
+#     4. How monitoring/alerting handles multiple failure types
+#
+# HOW PERCENTAGES WORK TOGETHER:
+#   The delay and abort percentages are evaluated INDEPENDENTLY:
+#
+#   For each request, Envoy evaluates:
+#     Step 1: Should this request be ABORTED? (20% chance)
+#       → YES: Return HTTP 503 immediately. DONE. (skip delay)
+#       → NO:  Continue to Step 2
+#     Step 2: Should this request be DELAYED? (30% chance)
+#       → YES: Wait 3s, then forward to httpbin
+#       → NO:  Forward to httpbin immediately
+#
+#   IMPORTANT: Abort is evaluated FIRST. If a request is aborted,
+#   the delay is never applied (because the request never proceeds).
+#
+#   Expected distribution for 100 requests:
+#   ┌──────────────────────────────────────────────────────────┐
+#   │  ~20 requests → HTTP 503 (aborted immediately)          │
+#   │  ~24 requests → 3s delay, then HTTP 200 (delayed)       │
+#   │  ~56 requests → HTTP 200 immediately (no fault)         │
+#   └──────────────────────────────────────────────────────────┘
+#   Math: 20% aborted, (80% remaining × 30% delayed) = 24% delayed,
+#         remaining 56% pass through normally
+#
+# TESTING:
+#   # Run 20 requests and observe the mix of delays and errors:
+#   for i in $(seq 1 20); do
+#     START=$(date +%s.%N)
+#     CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+#       -H "Host: httpbin.example.com" http://$GATEWAY_URL/get)
+#     END=$(date +%s.%N)
+#     DURATION=$(echo "$END - $START" | bc)
+#     echo "Request $i: HTTP $CODE (${DURATION}s)"
+#   done
+#   # You should see a mix of:
+#   #   - Fast 200s (no fault)
+#   #   - Slow 200s (~3s, delayed)
+#   #   - Fast 503s (aborted)
+#
+# RELATED FILES:
+#   - fault-delay.yaml : Delay only (simpler scenario)
+#   - fault-abort.yaml : Abort only (simpler scenario)
+# ============================================================================
+
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 metadata:
   name: httpbin-combined
   namespace: fault-demo
 spec:
+  # ─────────────────────────────────────────────────────────────────────────
+  # HOSTS: Which services this VirtualService applies to
+  # ─────────────────────────────────────────────────────────────────────────
   hosts:
-    - httpbin
-    - httpbin.example.com
+    - httpbin # Mesh-internal traffic (pod-to-pod)
+    - httpbin.example.com # External traffic via Gateway
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # GATEWAYS: Both external and internal traffic sources
+  # ─────────────────────────────────────────────────────────────────────────
   gateways:
-    - httpbin-gateway
-    - mesh
+    - httpbin-gateway # External traffic (defined in gateway.yaml)
+    - mesh # Internal mesh traffic (built-in keyword)
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # HTTP ROUTING RULES with Combined Fault Injection
+  # ─────────────────────────────────────────────────────────────────────────
   http:
     - fault:
+        # ═══════════════════════════════════════════════════════════════════
+        # DELAY FAULT: Simulate slow responses
+        # ═══════════════════════════════════════════════════════════════════
+        # Applied AFTER abort check passes (only non-aborted requests
+        # can be delayed)
         delay:
           percentage:
-            value: 30 # 30% get delayed
-          fixedDelay: 3s
+            value: 30 # 30% of non-aborted requests get delayed
+          fixedDelay: 3s # Hold request for 3 seconds before forwarding
+
+        # ═══════════════════════════════════════════════════════════════════
+        # ABORT FAULT: Simulate service errors
+        # ═══════════════════════════════════════════════════════════════════
+        # Evaluated FIRST - aborted requests skip the delay entirely
         abort:
           percentage:
-            value: 20 # 20% get aborted
-          httpStatus: 503
+            value: 20 # 20% of ALL requests get aborted
+          httpStatus: 503 # Return "503 Service Unavailable"
+
+      # ───────────────────────────────────────────────────────────────────
+      # ROUTE: Where to send requests that survive both fault checks
+      # ───────────────────────────────────────────────────────────────────
       route:
         - destination:
-            host: httpbin
+            host: httpbin # Kubernetes Service name
             port:
-              number: 80
+              number: 80 # Service port

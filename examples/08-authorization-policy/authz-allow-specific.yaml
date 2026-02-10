@@ -1,5 +1,48 @@
 # ============================================================================
-# ALLOW SPECIFIC: Only allow requests from sleep service account
+# AUTHORIZATION POLICY: Allow Specific Service Account
+# ============================================================================
+# PURPOSE:
+#   Allow ONLY the "sleep" service account to access httpbin, and ONLY
+#   using GET requests. All other callers or methods are denied.
+#
+# SERVICE ACCOUNT IDENTITY:
+#   In Istio, each pod has an identity based on its Kubernetes ServiceAccount.
+#   The identity format is: cluster.local/ns/<namespace>/sa/<serviceaccount>
+#
+#   Examples:
+#   - cluster.local/ns/authz-demo/sa/sleep   (sleep pod)
+#   - cluster.local/ns/authz-demo/sa/httpbin (httpbin pod)
+#
+# POLICY BREAKDOWN:
+#   ┌─────────────────────────────────────────────────────────────────────┐
+#   │                        ALLOW CONDITIONS                             │
+#   ├─────────────────────────────────────────────────────────────────────┤
+#   │  FROM: Must be "sleep" service account                              │
+#   │   AND                                                               │
+#   │  TO: Must be a GET request                                          │
+#   │   =                                                                 │
+#   │  RESULT: Request is ALLOWED                                        │
+#   ├─────────────────────────────────────────────────────────────────────┤
+#   │  Otherwise: Request is DENIED (403 Forbidden)                       │
+#   └─────────────────────────────────────────────────────────────────────┘
+#
+# HOW TO TEST:
+#   1. Apply both deny-all and this allow policy
+#   2. From sleep pod (allowed):
+#      $ kubectl exec deploy/sleep -n authz-demo -- curl http://httpbin:80/get
+#      # Result: 200 OK
+#
+#   3. From sleep pod with POST (denied):
+#      $ kubectl exec deploy/sleep -n authz-demo -- curl -X POST http://httpbin:80/post
+#      # Result: 403 Forbidden (only GET allowed)
+#
+#   4. From another service (denied):
+#      $ kubectl exec deploy/other-service -- curl http://httpbin.authz-demo:80/get
+#      # Result: 403 Forbidden (not sleep service account)
+#
+# RELATED FILES:
+#   - authz-deny-all.yaml: Blocks all traffic by default
+#   - deployment.yaml: Creates ServiceAccounts for httpbin and sleep
 # ============================================================================
 apiVersion: security.istio.io/v1beta1
 kind: AuthorizationPolicy
@@ -7,14 +50,31 @@ metadata:
   name: allow-sleep
   namespace: authz-demo
 spec:
+  # ─────────────────────────────────────────────────────────────────────────
+  # SELECTOR: Apply to pods with app=httpbin label
+  # ─────────────────────────────────────────────────────────────────────────
   selector:
     matchLabels:
       app: httpbin
+  # ─────────────────────────────────────────────────────────────────────────
+  # ACTION: ALLOW (permit requests matching the rules below)
+  # ─────────────────────────────────────────────────────────────────────────
   action: ALLOW
   rules:
     - from:
+        # ───────────────────────────────────────────────────────────────────
+        # WHO: Only requests from the "sleep" service account
+        # ───────────────────────────────────────────────────────────────────
         - source:
-            principals: ["cluster.local/ns/authz-demo/sa/sleep"]
+            principals:
+              - "cluster.local/ns/authz-demo/sa/sleep"
+            # Alternative syntax for any service account in namespace:
+            # namespaces: ["authz-demo"]
       to:
+        # ───────────────────────────────────────────────────────────────────
+        # WHAT: Only GET requests (not POST, PUT, DELETE, etc.)
+        # ───────────────────────────────────────────────────────────────────
         - operation:
             methods: ["GET"]
+            # Can also restrict paths:
+            # paths: ["/api/*", "/health"]

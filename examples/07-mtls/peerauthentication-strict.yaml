@@ -1,11 +1,51 @@
 # ============================================================================
-# PEER AUTHENTICATION: Strict mTLS for namespace
+# PEER AUTHENTICATION: Strict mTLS (Mutual TLS Required)
+# ============================================================================
+# PURPOSE:
+#   Enforce mutual TLS for ALL traffic to/from pods in this namespace.
+#   Only encrypted, authenticated connections are allowed.
+#
+# WHAT IS mTLS?
+#   Mutual TLS = BOTH client AND server verify each other's certificates
+#
+#   Normal TLS:  Client verifies server only
+#   Mutual TLS:  Client ⟷ Server (both verify each other)
+#
+# HOW ISTIO mTLS WORKS:
+#   1. Istio automatically generates certificates for each service
+#   2. Envoy sidecars handle encryption/decryption transparently
+#   3. Application code doesn't change - it still uses plain HTTP
+#   4. Traffic between sidecars is encrypted with TLS
+#
+#   Client App → [plaintext] → Envoy Sidecar → [mTLS encrypted] →
+#                                            → Envoy Sidecar → [plaintext] → Server App
+#
+# STRICT MODE:
+#   - Rejects any non-mTLS connections
+#   - Provides strongest security guarantees
+#   - Requires ALL clients to have Istio sidecar injected
+#   - Non-mesh clients (without sidecar) will be BLOCKED
+#
+# WHEN TO USE:
+#   - Production environments requiring encryption
+#   - After migrating all services to mesh (with sidecars)
+#   - Zero-trust network policies
+#
+# RELATED FILES:
+#   - peerauthentication-permissive.yaml: Migration mode (accepts both)
+#   - deployment.yaml: httpbin + sleep to test mTLS between pods
 # ============================================================================
 apiVersion: security.istio.io/v1beta1
 kind: PeerAuthentication
 metadata:
-  name: default
+  name: default # "default" applies to ALL pods in namespace
   namespace: mtls-demo
 spec:
   mtls:
-    mode: STRICT # Only mTLS connections allowed
+    mode: STRICT # ONLY mTLS connections allowed
+    # ─────────────────────────────────────────────────────────────────────
+    # Other modes available:
+    #   PERMISSIVE: Accept both mTLS and plaintext (migration mode)
+    #   DISABLE: Do not use mTLS (not recommended)
+    #   UNSET: Inherit from parent (mesh-wide setting)
+    # ─────────────────────────────────────────────────────────────────────

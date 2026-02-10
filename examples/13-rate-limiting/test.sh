@@ -1,4 +1,15 @@
 #!/bin/bash
+# ============================================================================
+# test.sh - Test rate limiting behavior
+# ============================================================================
+# Sends 15 rapid requests. With a 10 req/min token bucket:
+#   - Requests 1-10: HTTP 200 (tokens available)
+#   - Requests 11-15: HTTP 429 Too Many Requests (tokens exhausted)
+#
+# The 429 response includes header: x-local-rate-limit: true
+# Wait 60 seconds for tokens to refill, then retry.
+# ============================================================================
+
 echo "=== Rate Limiting Test ==="
 echo "Sending 15 rapid requests (limit is 10/min)..."
 

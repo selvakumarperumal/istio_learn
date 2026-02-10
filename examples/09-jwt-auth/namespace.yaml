@@ -1,6 +1,13 @@
+# ============================================================================
+# NAMESPACE: Isolated environment for JWT authentication demo
+# ============================================================================
+# Istio sidecar injection is required for JWT validation — the Envoy
+# sidecar performs token extraction, JWKS fetching, and signature
+# verification. Without the sidecar, RequestAuthentication has no effect.
+# ============================================================================
 apiVersion: v1
 kind: Namespace
 metadata:
   name: jwt-demo
   labels:
-    istio-injection: enabled
+    istio-injection: enabled # Sidecars handle JWT validation

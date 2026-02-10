@@ -1,29 +1,113 @@
 # ============================================================================
 # FAULT INJECTION: Delay - Add latency to test timeout handling
 # ============================================================================
+# PURPOSE:
+#   Injects artificial delays into requests routed to the httpbin service.
+#   This simulates slow upstream dependencies (e.g., a database or third-party
+#   API responding slowly) WITHOUT modifying the application code.
+#
+# WHY USE DELAY INJECTION?
+#   In a microservices architecture, services depend on each other. If one
+#   service becomes slow, it can cascade and bring down the entire system.
+#   By injecting delays, you can verify:
+#     1. Timeout policies are configured correctly
+#     2. Retry logic handles slow responses gracefully
+#     3. Circuit breakers trip when latency exceeds thresholds
+#     4. The UI shows loading states or fallback content
+#
+# HOW IT WORKS (Envoy Sidecar Level):
+#   ┌─────────┐     ┌──────────────────────────────┐     ┌─────────┐
+#   │ Client  │────▶│ Envoy Sidecar (Istio Proxy)  │────▶│ httpbin │
+#   └─────────┘     │                              │     └─────────┘
+#                   │  1. Request arrives           │
+#                   │  2. Check fault injection     │
+#                   │     rules from VirtualService │
+#                   │  3. Roll dice: 50% chance     │
+#                   │  4. If hit: WAIT 5s, then     │
+#                   │     forward to httpbin        │
+#                   │  5. If miss: forward          │
+#                   │     immediately               │
+#                   └──────────────────────────────┘
+#
+# IMPORTANT NOTES:
+#   - The delay is injected at the Envoy proxy level, NOT in the app
+#   - The httpbin container itself responds instantly; the proxy holds
+#     the request for the configured duration before forwarding
+#   - The percentage is evaluated per-request (not per-connection)
+#   - fixedDelay adds a constant delay; use exponentialDelay for
+#     variable delays (Istio 1.18+)
+#
+# TESTING:
+#   # Run 10 requests and observe response times:
+#   for i in $(seq 1 10); do
+#     time curl -s -o /dev/null -H "Host: httpbin.example.com" \
+#       http://$GATEWAY_URL/get
+#   done
+#   # ~50% of requests should take ~5s, the rest should be instant
+#
+# RELATED FILES:
+#   - fault-abort.yaml    : Returns HTTP errors instead of delays
+#   - fault-combined.yaml : Both delay AND abort together
+# ============================================================================
+
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 metadata:
   name: httpbin-delay
-  namespace: fault-demo
+  namespace: fault-demo # Must match the namespace where httpbin is deployed
 spec:
+  # ─────────────────────────────────────────────────────────────────────────
+  # HOSTS: Which services this VirtualService applies to
+  # ─────────────────────────────────────────────────────────────────────────
+  # - "httpbin"              → matches mesh-internal traffic (service-to-service)
+  # - "httpbin.example.com"  → matches external traffic via Gateway
   hosts:
     - httpbin
     - httpbin.example.com
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # GATEWAYS: Where traffic originates from
+  # ─────────────────────────────────────────────────────────────────────────
+  # - httpbin-gateway → external traffic entering via Istio Ingress Gateway
+  # - mesh            → internal traffic between services in the mesh
+  # Including both ensures faults are injected regardless of traffic source
   gateways:
-    - httpbin-gateway
-    - mesh
+    - httpbin-gateway # External traffic (defined in gateway.yaml)
+    - mesh # Internal mesh traffic (built-in keyword)
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # HTTP ROUTING RULES with Fault Injection
+  # ─────────────────────────────────────────────────────────────────────────
   http:
     - fault:
         delay:
           # ═══════════════════════════════════════════════════════════════
-          # Inject 5 second delay on 50% of requests
+          # DELAY CONFIGURATION
+          # ═══════════════════════════════════════════════════════════════
+          # percentage.value: What fraction of requests get delayed
+          #   - 0   = no requests delayed (fault injection disabled)
+          #   - 50  = half the requests are delayed
+          #   - 100 = ALL requests are delayed
+          #
+          # Tip: Start with a low percentage (10-20%) in production to
+          #      observe behavior without overwhelming the system
           # ═══════════════════════════════════════════════════════════════
           percentage:
-            value: 50 # Apply to 50% of requests
-          fixedDelay: 5s # 5 second delay
+            value: 50 # Apply delay to 50% of requests
+          # fixedDelay: The exact duration to hold the request
+          #   - Supports s (seconds), ms (milliseconds)
+          #   - Example values: 500ms, 1s, 5s, 30s
+          #   - Must be > 0ms, typically 1s - 30s for testing
+          #   - Values too high may trigger upstream timeouts
+          fixedDelay: 5s # Hold request for exactly 5 seconds
+
+      # ───────────────────────────────────────────────────────────────────
+      # ROUTE: Where to send the request after fault processing
+      # ───────────────────────────────────────────────────────────────────
+      # Even with fault injection, a route is required. After the delay,
+      # the request is forwarded to the actual destination.
       route:
         - destination:
-            host: httpbin
+            host: httpbin # Kubernetes Service name
             port:
-              number: 80
+              number: 80 # Service port (matches Service spec)

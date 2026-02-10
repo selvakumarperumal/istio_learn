@@ -1,16 +1,79 @@
 # ============================================================================
-# REQUEST AUTHENTICATION: Validate JWT tokens
+# REQUEST AUTHENTICATION: JWT Token Validation
 # ============================================================================
-# Using Istio's sample JWT for testing
+# PURPOSE:
+#   Configure Istio to validate JWT (JSON Web Token) bearer tokens on
+#   incoming requests. Invalid or missing tokens can be rejected.
+#
+# WHAT IS JWT?
+#   JWT is a standard for securely transmitting claims between parties:
+#   - Header:    Algorithm and token type
+#   - Payload:   Claims (issuer, subject, expiration, custom data)
+#   - Signature: Cryptographic signature to verify authenticity
+#
+#   Example JWT structure: xxxxx.yyyyy.zzzzz (base64 encoded)
+#
+# HOW JWT VALIDATION WORKS:
+#   1. Client sends request with "Authorization: Bearer <token>" header
+#   2. Istio extracts the JWT from the header
+#   3. Istio fetches public keys from jwksUri
+#   4. Istio validates: signature, issuer, expiration
+#   5. If valid: request proceeds (with claims available to AuthorizationPolicy)
+#   6. If invalid: request is rejected (401 Unauthorized)
+#
+# REQUEST FLOW:
+#   ┌──────────────────────────────────────────────────────────────────────┐
+#   │  Client sends: GET /api                                              │
+#   │                Authorization: Bearer eyJhbGci...                     │
+#   │                                  ↓                                   │
+#   │  Envoy validates JWT using JWKS from issuer                         │
+#   │                                  ↓                                   │
+#   │  Valid? → Forward to httpbin   Invalid? → 401 Unauthorized          │
+#   └──────────────────────────────────────────────────────────────────────┘
+#
+# THIS EXAMPLE USES:
+#   Istio's sample JWT issuer for testing. In production, use your own
+#   identity provider (Auth0, Keycloak, Okta, AWS Cognito, etc.)
+#
+# HOW TO TEST:
+#   1. Get a valid sample token:
+#      $ TOKEN=$(curl https://raw.githubusercontent.com/istio/istio/release-1.20/security/tools/jwt/samples/demo.jwt -s)
+#
+#   2. Request with valid token (should succeed):
+#      $ curl -H "Authorization: Bearer $TOKEN" http://<gateway>/headers
+#
+#   3. Request without token (depends on AuthorizationPolicy):
+#      $ curl http://<gateway>/headers
+#
+# RELATED FILES:
+#   - authorizationpolicy.yaml: Enforces JWT requirement (rejects no-token)
+#   - gateway.yaml: Ingress configuration for external access
+# ============================================================================
 apiVersion: security.istio.io/v1beta1
 kind: RequestAuthentication
 metadata:
   name: jwt-auth
   namespace: jwt-demo
 spec:
+  # ─────────────────────────────────────────────────────────────────────────
+  # SELECTOR: Apply JWT validation to httpbin pods
+  # ─────────────────────────────────────────────────────────────────────────
   selector:
     matchLabels:
       app: httpbin
+  # ─────────────────────────────────────────────────────────────────────────
+  # JWT RULES: Define accepted token issuers and validation settings
+  # ─────────────────────────────────────────────────────────────────────────
   jwtRules:
-    - issuer: "testing@secure.istio.io"
+    - issuer: "testing@secure.istio.io" # Expected "iss" claim in JWT
       jwksUri: "https://raw.githubusercontent.com/istio/istio/release-1.20/security/tools/jwt/samples/jwks.json"
+      # ─────────────────────────────────────────────────────────────────────
+      # JWKS (JSON Web Key Set) contains public keys to verify signatures
+      # Istio fetches these keys and caches them for validation
+      # ─────────────────────────────────────────────────────────────────────
+      # Additional options:
+      #   audiences: ["my-audience"]     # Expected "aud" claim
+      #   fromHeaders:                   # Custom header to extract JWT from
+      #   - name: x-jwt-token
+      #   forwardOriginalToken: true     # Pass JWT to upstream service
+      # ─────────────────────────────────────────────────────────────────────

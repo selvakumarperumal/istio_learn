@@ -1,29 +1,125 @@
 # ============================================================================
 # FAULT INJECTION: Abort - Return HTTP errors to test error handling
 # ============================================================================
+# PURPOSE:
+#   Injects HTTP error responses into requests without the actual service
+#   failing. This simulates service outages, dependency failures, or
+#   backend errors to test how your application handles error conditions.
+#
+# WHY USE ABORT INJECTION?
+#   Real services fail in production. Common scenarios include:
+#     - Database connection refused (503)
+#     - Authentication service down (503)
+#     - Rate limiting triggered (429)
+#     - Upstream timeout (504)
+#     - Internal server error (500)
+#
+#   By injecting aborts, you can verify:
+#     1. Error pages display meaningful messages (not raw stack traces)
+#     2. Retry policies kick in for transient failures
+#     3. Circuit breakers open after repeated failures
+#     4. Fallback mechanisms activate (cached responses, defaults)
+#     5. Alerting and monitoring detect the error spike
+#
+# HOW IT WORKS (Envoy Sidecar Level):
+#   ┌─────────┐     ┌──────────────────────────────┐     ┌─────────┐
+#   │ Client  │────▶│ Envoy Sidecar (Istio Proxy)  │     │ httpbin │
+#   └─────────┘     │                              │     │ (never  │
+#                   │  1. Request arrives           │     │  called │
+#                   │  2. Check fault injection     │     │  on     │
+#                   │     rules from VirtualService │     │  abort) │
+#                   │  3. Roll dice: 50% chance     │     └─────────┘
+#                   │  4. If hit: Return HTTP 503   │
+#                   │     IMMEDIATELY (no upstream) │◀── Request never
+#                   │  5. If miss: Forward request  │    reaches pod!
+#                   │     normally to httpbin       │
+#                   └──────────────────────────────┘
+#
+# KEY DIFFERENCE FROM DELAY:
+#   - Delay: Request is slow but eventually succeeds
+#   - Abort: Request fails immediately with an HTTP error code
+#   - With abort, the request NEVER reaches the backend pod - the
+#     Envoy proxy returns the error directly to the caller
+#
+# AVAILABLE HTTP STATUS CODES:
+#   - 400 : Bad Request
+#   - 403 : Forbidden
+#   - 404 : Not Found
+#   - 429 : Too Many Requests (rate limiting simulation)
+#   - 500 : Internal Server Error
+#   - 502 : Bad Gateway
+#   - 503 : Service Unavailable (most common for outage simulation)
+#   - 504 : Gateway Timeout
+#
+# TESTING:
+#   # Run 10 requests and observe HTTP status codes:
+#   for i in $(seq 1 10); do
+#     curl -s -o /dev/null -w "Request $i: HTTP %{http_code}\n" \
+#       -H "Host: httpbin.example.com" http://$GATEWAY_URL/get
+#   done
+#   # ~50% should return HTTP 503, the rest should return HTTP 200
+#
+# RELATED FILES:
+#   - fault-delay.yaml    : Adds latency instead of errors
+#   - fault-combined.yaml : Both delay AND abort together
+# ============================================================================
+
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 metadata:
   name: httpbin-abort
-  namespace: fault-demo
+  namespace: fault-demo # Must match the namespace where httpbin is deployed
 spec:
+  # ─────────────────────────────────────────────────────────────────────────
+  # HOSTS: Which services this VirtualService applies to
+  # ─────────────────────────────────────────────────────────────────────────
+  # - "httpbin"              → mesh-internal traffic (pod-to-pod)
+  # - "httpbin.example.com"  → external traffic via Istio Ingress Gateway
   hosts:
     - httpbin
     - httpbin.example.com
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # GATEWAYS: Where traffic originates from
+  # ─────────────────────────────────────────────────────────────────────────
+  # - httpbin-gateway → external traffic entering via Istio Ingress Gateway
+  # - mesh            → internal traffic between services in the mesh
   gateways:
-    - httpbin-gateway
-    - mesh
+    - httpbin-gateway # External traffic (defined in gateway.yaml)
+    - mesh # Internal mesh traffic (built-in keyword)
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # HTTP ROUTING RULES with Abort Fault Injection
+  # ─────────────────────────────────────────────────────────────────────────
   http:
     - fault:
         abort:
           # ═══════════════════════════════════════════════════════════════
-          # Return HTTP 503 on 50% of requests
+          # ABORT CONFIGURATION
+          # ═══════════════════════════════════════════════════════════════
+          # percentage.value: What fraction of requests receive the error
+          #   - 0   = no requests aborted (fault injection disabled)
+          #   - 50  = half the requests fail with the configured status
+          #   - 100 = ALL requests fail (complete outage simulation)
+          #
+          # Tip: Use 100% to simulate a complete outage scenario.
+          #      Use 10-30% to simulate intermittent failures.
           # ═══════════════════════════════════════════════════════════════
           percentage:
-            value: 50 # Apply to 50% of requests
-          httpStatus: 503 # Return 503 Service Unavailable
+            value: 50 # Apply abort to 50% of requests
+          # httpStatus: The HTTP error code returned to the caller
+          #   - The Envoy proxy generates this response directly
+          #   - The backend pod is never contacted for aborted requests
+          #   - Choose a status code that matches the failure you're simulating
+          httpStatus: 503 # Return "503 Service Unavailable"
+
+      # ───────────────────────────────────────────────────────────────────
+      # ROUTE: Where to send non-aborted requests
+      # ───────────────────────────────────────────────────────────────────
+      # Requests that pass the abort dice roll (the other 50%) are
+      # forwarded normally to the httpbin service.
       route:
         - destination:
-            host: httpbin
+            host: httpbin # Kubernetes Service name
             port:
-              number: 80
+              number: 80 # Service port (matches Service spec)

@@ -1,16 +1,25 @@
 # ============================================================================
 # DESTINATION RULE: Define subsets for each version
 # ============================================================================
+# Subsets map version labels to named groups that VirtualService can target.
+# Without subsets, VirtualService cannot route to specific versions.
 #
-# Subsets allow routing to specific pod versions using labels
+# HOW SUBSETS WORK:
+#   1. Service (reviews-svc) selects ALL pods with app=reviews
+#   2. DestinationRule adds ADDITIONAL filters using version labels
+#   3. VirtualService routes to "subset: v1" → pods with version=v1
 #
+# RELATED FILES:
+#   - virtual-service.yaml: Uses these subsets in routing rules
+#   - deployment.yaml: Pods with version labels v1, v2, v3
+# ============================================================================
 apiVersion: networking.istio.io/v1beta1
 kind: DestinationRule
 metadata:
   name: reviews-destination
   namespace: routing-demo
 spec:
-  host: reviews-svc
+  host: reviews-svc # Matches the Service name (not the app label!)
   subsets:
     # Subset v1 - matches pods with version=v1 label
     - name: v1

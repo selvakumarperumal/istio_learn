@@ -1,11 +1,38 @@
-# httpbin deployment for circuit breaker testing
+# ============================================================================
+# DEPLOYMENT & SERVICE: httpbin - Target Service for Circuit Breaker Testing
+# ============================================================================
+# PURPOSE:
+#   Deploy httpbin as the target service that will be protected by circuit
+#   breaker rules. When this service becomes unhealthy or overloaded, Istio
+#   will "trip" the circuit and stop sending traffic.
+#
+# CIRCUIT BREAKER FLOW:
+#   fortio (load generator) → Envoy Proxy → [CIRCUIT BREAKER CHECK] → httpbin
+#                                        ↓
+#                           If limits exceeded: Return 503 immediately
+#                           If within limits: Forward to httpbin
+#
+# HOW TO TEST:
+#   Use fortio to generate concurrent connections beyond the limit (1):
+#   $ kubectl exec fortio-xxx -- fortio load -c 3 -n 30 http://httpbin:80/get
+#
+#   Watch for "upstream_rq_pending_overflow" in the response - this means
+#   the circuit breaker rejected the request!
+#
+# RELATED FILES:
+#   - destination-rule.yaml : Defines circuit breaker thresholds
+#   - fortio-client.yaml    : Load testing tool to trigger the breaker
+# ============================================================================
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: httpbin
   namespace: circuit-demo
+  labels:
+    app: httpbin
 spec:
-  replicas: 1
+  replicas: 1 # Single replica to easily trigger limits
   selector:
     matchLabels:
       app: httpbin
@@ -19,20 +46,29 @@ spec:
           image: kennethreitz/httpbin
           ports:
             - containerPort: 80
+          # ──────────────────────────────────────────────────────────────────
+          # RESOURCES: Prevent pod starvation and ensure stable QoS
+          # ──────────────────────────────────────────────────────────────────
           resources:
-            limits:
+            requests: # Minimum guaranteed resources
+              memory: "128Mi"
+              cpu: "200m"
+            limits: # Maximum allowed resources
               memory: "128Mi"
               cpu: "200m"
 ---
+# ============================================================================
+# SERVICE: Exposes httpbin - this is what DestinationRule targets
+# ============================================================================
 apiVersion: v1
 kind: Service
 metadata:
-  name: httpbin
+  name: httpbin # DestinationRule "host: httpbin" uses this
   namespace: circuit-demo
 spec:
   ports:
     - port: 80
       targetPort: 80
-      name: http
+      name: http # Named port for Istio
   selector:
     app: httpbin

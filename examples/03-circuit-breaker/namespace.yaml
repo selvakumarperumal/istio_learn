@@ -1,7 +1,21 @@
-# Namespace
+# ============================================================================
+# NAMESPACE: Isolated environment for circuit breaker demo
+# ============================================================================
+# PURPOSE:
+#   Creates a dedicated namespace for circuit breaker testing. All resources
+#   (httpbin, fortio, DestinationRule) are deployed here.
+#
+# ISTIO SIDECAR INJECTION:
+#   The "istio-injection: enabled" label tells Istio to automatically inject
+#   Envoy sidecar proxies into every pod in this namespace. The circuit
+#   breaker logic runs inside these sidecars — without them, the
+#   DestinationRule has no effect.
+#
+#   Pod with sidecar: [Envoy Proxy (circuit breaker)] ↔ [Container]
+# ============================================================================
 apiVersion: v1
 kind: Namespace
 metadata:
   name: circuit-demo
   labels:
-    istio-injection: enabled
+    istio-injection: enabled # REQUIRED — circuit breaker runs in the sidecar

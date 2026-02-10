@@ -1,5 +1,33 @@
 # ============================================================================
-# LOAD BALANCING: Random
+# LOAD BALANCING: Random Selection
+# ============================================================================
+# PURPOSE:
+#   Randomly select an endpoint for each request. Over many requests,
+#   traffic is distributed roughly evenly, but not in a predictable order.
+#
+# HOW IT WORKS:
+#   Request 1 → Pod C (random)
+#   Request 2 → Pod A (random)
+#   Request 3 → Pod A (random - can repeat!)
+#   Request 4 → Pod B (random)
+#   ...completely random each time
+#
+# WHEN TO USE:
+#   - When you want to avoid patterns in traffic
+#   - Testing scenarios where randomness is acceptable
+#   - When you don't care about specific distribution order
+#
+# WHEN NOT TO USE:
+#   - When you need guaranteed even distribution (use ROUND_ROBIN)
+#   - When you need session affinity (use consistentHash)
+#   - In production where predictable behavior is important
+#
+# COMPARISON TO ROUND_ROBIN:
+#   Round Robin: A→B→C→A→B→C (predictable, perfectly even)
+#   Random:      C→A→A→B→C→A (unpredictable, statistically even)
+#
+# RELATED FILES:
+#   - deployment.yaml: Deploys 3 replicas to observe random distribution
 # ============================================================================
 apiVersion: networking.istio.io/v1beta1
 kind: DestinationRule
@@ -10,4 +38,4 @@ spec:
   host: httpbin
   trafficPolicy:
     loadBalancer:
-      simple: RANDOM # Random endpoint selection
+      simple: RANDOM # Random endpoint selection each request
