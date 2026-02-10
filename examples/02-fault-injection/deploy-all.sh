@@ -52,15 +52,23 @@ kubectl wait --for=condition=Ready pods --all -n fault-demo --timeout=120s
 echo -e "\n4. Applying gateway..."
 kubectl apply -f gateway.yaml
 
-# Step 5: Show available fault types and apply delay as default
-echo -e "\n5. Choose fault type to inject:"
-echo "   a) kubectl apply -f fault-delay.yaml    # Delay injection"
-echo "   b) kubectl apply -f fault-abort.yaml    # Abort injection"
-echo "   c) kubectl apply -f fault-combined.yaml # Both"
+# Step 5: Clean up any existing fault VirtualServices to prevent conflicts
+# IMPORTANT: Only ONE fault VirtualService should exist at a time!
+# Multiple VirtualServices targeting the same host cause unpredictable routing.
+echo -e "\n5. Removing any stale fault VirtualServices..."
+kubectl delete vs httpbin-delay httpbin-abort httpbin-combined -n fault-demo --ignore-not-found 2>/dev/null
 
-# Apply delay injection as the default starting point
-echo -e "\nApplying delay injection by default..."
+# Step 6: Apply delay injection as the default starting point
+echo -e "\n6. Applying delay injection by default..."
 kubectl apply -f fault-delay.yaml
+echo ""
+echo "Available fault types (apply only ONE at a time):"
+echo "   kubectl apply -f fault-delay.yaml    # 50% × 5s delay"
+echo "   kubectl apply -f fault-abort.yaml    # 50% × HTTP 503"
+echo "   kubectl apply -f fault-combined.yaml # 20% abort + 30% delay"
+echo ""
+echo "⚠  Before switching, delete the current one first:"
+echo "   kubectl delete vs <current-vs-name> -n fault-demo"
 
 echo -e "\n=== Deployment Complete ==="
 kubectl get pods -n fault-demo

@@ -1,80 +1,142 @@
 #!/bin/bash
 # ============================================================================
-# test.sh - Test and verify fault injection is working
+# test.sh - Test all fault injection scenarios
 # ============================================================================
-# WHAT THIS SCRIPT DOES:
-#   1. Discovers the Istio Ingress Gateway URL (NodePort + Minikube IP)
-#   2. Sends 5 HTTP requests to httpbin through the gateway
-#   3. Measures response time and HTTP status code for each request
-#   4. Prints results so you can observe fault injection effects
+# Tests three fault injection modes:
+#   1. DELAY: 50% of requests delayed by 5 seconds
+#   2. ABORT: 50% of requests return HTTP 503
+#   3. COMBINED: 20% abort + 30% delay on remaining
 #
-# EXPECTED RESULTS:
-#   With fault-delay.yaml applied:
-#     - ~50% of requests should take ~5 seconds (delayed)
-#     - ~50% of requests should complete in <1 second (no fault)
-#     - All requests should return HTTP 200
-#
-#   With fault-abort.yaml applied:
-#     - ~50% of requests should return HTTP 503 (aborted)
-#     - ~50% of requests should return HTTP 200 (passed through)
-#     - All requests should complete quickly (aborts are immediate)
-#
-#   With fault-combined.yaml applied:
-#     - ~20% of requests → HTTP 503 (aborted, fast)
-#     - ~24% of requests → HTTP 200 (delayed ~3s)
-#     - ~56% of requests → HTTP 200 (no fault, fast)
+# HOW IT WORKS:
+#   Before each test, ALL existing fault VirtualServices are deleted
+#   to prevent conflicts, then the correct one is applied.
 #
 # PREREQUISITES:
-#   - ./deploy-all.sh has been run successfully
-#   - minikube is running (for IP and NodePort discovery)
-#   - curl and bc are installed
-#
-# USAGE:
-#   ./test.sh
+#   - ./deploy-all.sh has been run
+#   - minikube is running
 # ============================================================================
+
+set -e
 
 echo "=== Fault Injection Test ==="
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STEP 1: Discover the Gateway URL
 # ─────────────────────────────────────────────────────────────────────────────
-# The Istio Ingress Gateway is exposed as a NodePort service in Minikube.
-# We need the NodePort number and the Minikube VM's IP to construct the URL.
-#
-# For cloud clusters (GKE, EKS), you'd use a LoadBalancer IP instead:
-#   GATEWAY_URL=$(kubectl get svc -n istio-ingress istio-ingressgateway \
-#     -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-# ─────────────────────────────────────────────────────────────────────────────
-NODE_PORT=$(kubectl get svc -n istio-ingress istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="http2")].nodePort}' 2>/dev/null)
-MINIKUBE_IP=$(minikube ip 2>/dev/null)
-GATEWAY_URL="http://$MINIKUBE_IP:$NODE_PORT"
+GATEWAY_URL=""
+EXTERNAL_IP=$(kubectl get svc -n istio-ingress istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
 
-echo "Using: $GATEWAY_URL"
-
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 2: Send test requests and measure results
-# ─────────────────────────────────────────────────────────────────────────────
-# For each request, we measure:
-#   - HTTP status code: 200 = success, 503 = aborted by fault injection
-#   - Response time: Fast (<1s) = no delay, Slow (~5s) = delay injected
-#
-# The Host header is required because the Gateway is configured to route
-# traffic based on the hostname "httpbin.example.com"
-# ─────────────────────────────────────────────────────────────────────────────
-echo -e "\n=== Testing Delay Injection (5 requests) ==="
-echo "Some requests should take ~5s, others should be fast"
-for i in {1..5}; do
-    START=$(date +%s.%N)
-    RESULT=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: httpbin.example.com" "$GATEWAY_URL/get" 2>/dev/null)
-    END=$(date +%s.%N)
-    DURATION=$(echo "$END - $START" | bc)
-    echo "  Request $i: HTTP $RESULT (${DURATION}s)"
-done
+if [ -n "$EXTERNAL_IP" ] && [ "$EXTERNAL_IP" != "null" ]; then
+    GATEWAY_URL="http://$EXTERNAL_IP"
+    echo "Using LoadBalancer IP: $GATEWAY_URL"
+else
+    NODE_PORT=$(kubectl get svc -n istio-ingress istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="http2")].nodePort}' 2>/dev/null)
+    MINIKUBE_IP=$(minikube ip 2>/dev/null)
+    if [ -n "$NODE_PORT" ] && [ -n "$MINIKUBE_IP" ]; then
+        GATEWAY_URL="http://$MINIKUBE_IP:$NODE_PORT"
+        echo "Using NodePort: $GATEWAY_URL"
+    else
+        echo "ERROR: Could not determine gateway URL"
+        exit 1
+    fi
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STEP 3: Show how to switch to abort injection for further testing
+# Helper: Remove ALL fault VirtualServices to prevent conflicts
 # ─────────────────────────────────────────────────────────────────────────────
-echo -e "\n=== To test abort injection ==="
-echo "kubectl apply -f fault-abort.yaml"
-echo "Then run: curl -v -H 'Host: httpbin.example.com' $GATEWAY_URL/get"
-echo "Some requests should return HTTP 503"
+cleanup_vs() {
+    kubectl delete vs httpbin-delay httpbin-abort httpbin-combined -n fault-demo --ignore-not-found 2>/dev/null
+    sleep 2  # Allow Envoy to pick up the change
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helper: Send test requests and measure response time + status code
+# ─────────────────────────────────────────────────────────────────────────────
+send_requests() {
+    local COUNT=${1:-10}
+    for i in $(seq 1 $COUNT); do
+        START=$(date +%s%N)
+        CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Host: httpbin.example.com" \
+            --max-time 10 \
+            "$GATEWAY_URL/get" 2>/dev/null)
+        END=$(date +%s%N)
+        # Calculate duration in seconds with 1 decimal
+        DURATION_MS=$(( (END - START) / 1000000 ))
+        DURATION_S=$(echo "scale=1; $DURATION_MS / 1000" | bc)
+
+        if [ "$CODE" == "503" ]; then
+            echo "  Request $i: HTTP $CODE  ${DURATION_S}s  ← ABORTED"
+        elif (( DURATION_MS > 2000 )); then
+            echo "  Request $i: HTTP $CODE  ${DURATION_S}s  ← DELAYED"
+        else
+            echo "  Request $i: HTTP $CODE  ${DURATION_S}s"
+        fi
+    done
+}
+
+# ═════════════════════════════════════════════════════════════════════════════
+# TEST 1: Delay Injection (50% chance of 5s delay)
+# ═════════════════════════════════════════════════════════════════════════════
+echo -e "\n────────────────────────────────────────────────"
+echo "TEST 1: DELAY INJECTION (fault-delay.yaml)"
+echo "────────────────────────────────────────────────"
+echo "Config: 50% of requests delayed by 5 seconds"
+echo "Expected: ~half take ~5s, half are instant, all HTTP 200"
+echo ""
+
+cleanup_vs
+kubectl apply -f fault-delay.yaml
+echo "Waiting for config to propagate..."
+sleep 3
+
+send_requests 6
+
+# ═════════════════════════════════════════════════════════════════════════════
+# TEST 2: Abort Injection (50% chance of HTTP 503)
+# ═════════════════════════════════════════════════════════════════════════════
+echo -e "\n────────────────────────────────────────────────"
+echo "TEST 2: ABORT INJECTION (fault-abort.yaml)"
+echo "────────────────────────────────────────────────"
+echo "Config: 50% of requests return HTTP 503"
+echo "Expected: ~half return 503, half return 200, all fast"
+echo ""
+
+cleanup_vs
+kubectl apply -f fault-abort.yaml
+echo "Waiting for config to propagate..."
+sleep 3
+
+send_requests 6
+
+# ═════════════════════════════════════════════════════════════════════════════
+# TEST 3: Combined Injection (20% abort + 30% delay)
+# ═════════════════════════════════════════════════════════════════════════════
+echo -e "\n────────────────────────────────────────────────"
+echo "TEST 3: COMBINED INJECTION (fault-combined.yaml)"
+echo "────────────────────────────────────────────────"
+echo "Config: 20% abort (503) + 30% delay (3s) on remaining"
+echo "Expected: mix of fast 200s, slow 200s (~3s), and 503s"
+echo ""
+
+cleanup_vs
+kubectl apply -f fault-combined.yaml
+echo "Waiting for config to propagate..."
+sleep 3
+
+send_requests 10
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SUMMARY
+# ═════════════════════════════════════════════════════════════════════════════
+echo -e "\n════════════════════════════════════════════════"
+echo "SUMMARY"
+echo "════════════════════════════════════════════════"
+echo "✓ Test 1 (Delay):    ~50% should show ~5s delay"
+echo "✓ Test 2 (Abort):    ~50% should show HTTP 503"
+echo "✓ Test 3 (Combined): Mix of delays + aborts"
+echo ""
+echo "To switch fault type manually:"
+echo "  kubectl apply -f fault-delay.yaml"
+echo "  kubectl apply -f fault-abort.yaml"
+echo "  kubectl apply -f fault-combined.yaml"
