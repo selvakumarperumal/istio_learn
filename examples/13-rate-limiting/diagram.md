@@ -153,3 +153,68 @@ sequenceDiagram
     Note over E: App never called!
     E-->>C: 429 Too Many Requests
 ```
+
+## Gateway + Rate Limiting (EnvoyFilter Location)
+
+```mermaid
+graph TB
+    EXT["🌍 External Client<br/>(many requests)"]
+
+    subgraph "Istio Ingress Gateway"
+        GW["👂 Gateway Envoy<br/>Port 80"]
+        EF["🚰 EnvoyFilter<br/>Local Rate Limit<br/>token_bucket:<br/>  max_tokens: 10<br/>  fill_interval: 60s"]
+    end
+
+    VS["📋 VirtualService<br/>Route to httpbin"]
+
+    subgraph "Namespace"
+        APP["📦 httpbin Pod"]
+    end
+
+    EXT --> GW
+    GW --> EF
+    EF -->|"tokens available ✅"| VS
+    EF -->|"no tokens ❌"| REJECT["429 Too Many Requests"]
+    VS --> APP
+
+    style GW fill:#4CAF50,color:#fff
+    style EF fill:#FF9800,color:#fff
+    style REJECT fill:#f44336,color:#fff
+```
+
+## End-to-End with Gateway + Rate Limit
+
+```mermaid
+sequenceDiagram
+    participant EXT as External Client
+    participant LB as LoadBalancer
+    participant GW as Gateway Envoy<br/>(EnvoyFilter applied)
+    participant APP as httpbin Pod
+
+    Note over GW: Token bucket: 3/3 (for demo)
+
+    EXT->>LB: Request 1
+    LB->>GW: Forward
+    GW->>GW: Token: 3→2 ✅
+    GW->>APP: Forward to httpbin
+    APP-->>EXT: 200 OK
+
+    EXT->>LB: Request 2
+    LB->>GW: Forward
+    GW->>GW: Token: 2→1 ✅
+    GW->>APP: Forward
+    APP-->>EXT: 200 OK
+
+    EXT->>LB: Request 3
+    LB->>GW: Forward
+    GW->>GW: Token: 1→0 ✅
+    GW->>APP: Forward
+    APP-->>EXT: 200 OK
+
+    EXT->>LB: Request 4
+    LB->>GW: Forward
+    GW->>GW: Token: 0 ❌ EMPTY
+    Note over APP: Never called!
+    GW-->>EXT: 429 Too Many Requests
+```
+

@@ -152,3 +152,66 @@ pie title "30 requests with -c 3 (3 concurrent)"
     "200 OK (within limit)" : 10
     "503 Overflow (rejected)" : 20
 ```
+
+## Gateway + Full Resource Chain
+
+```mermaid
+graph TB
+    EXT["🌍 External Client / fortio"]
+
+    subgraph "Istio Ingress Gateway"
+        GW_ENVOY["👂 Gateway Envoy<br/>Port 80<br/>Host: httpbin.example.com"]
+    end
+
+    VS["📋 VirtualService<br/>Route to httpbin service"]
+
+    subgraph "DestinationRule (Circuit Breaker lives HERE)"
+        DR["🔴 trafficPolicy:<br/>connectionPool:<br/>  maxConnections: 1<br/>  maxPendingRequests: 1<br/>outlierDetection:<br/>  consecutive5xxErrors: 1<br/>  baseEjectionTime: 30s"]
+    end
+
+    subgraph "circuit-demo Namespace"
+        SVC["🔗 httpbin Service"]
+        P1["📦 httpbin Pod 1"]
+        P2["📦 httpbin Pod 2"]
+    end
+
+    EXT --> GW_ENVOY
+    GW_ENVOY --> VS
+    VS --> DR
+    DR -->|"apply limits"| SVC
+    SVC --> P1
+    SVC --> P2
+
+    style GW_ENVOY fill:#4CAF50,color:#fff
+    style VS fill:#2196F3,color:#fff
+    style DR fill:#FF5722,color:#fff
+```
+
+## Where Each Config Lives
+
+```mermaid
+graph LR
+    subgraph "Gateway (gateway.yaml)"
+        GW_CFG["Accepts external traffic<br/>Port, Host, Protocol"]
+    end
+
+    subgraph "VirtualService (virtualservice.yaml)"
+        VS_CFG["Routing rules<br/>Which service to send to"]
+    end
+
+    subgraph "DestinationRule (destination-rule.yaml)"
+        DR_CFG["Circuit breaker config<br/>connectionPool<br/>outlierDetection"]
+    end
+
+    subgraph "Service + Pods"
+        APP["httpbin pods"]
+    end
+
+    GW_CFG -->|"routes to"| VS_CFG
+    VS_CFG -->|"destination"| DR_CFG
+    DR_CFG -->|"limits applied to"| APP
+
+    style GW_CFG fill:#4CAF50,color:#fff
+    style VS_CFG fill:#2196F3,color:#fff
+    style DR_CFG fill:#FF5722,color:#fff
+```

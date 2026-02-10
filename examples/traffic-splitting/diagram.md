@@ -158,3 +158,63 @@ graph TB
     style RR_V1 fill:#4CAF50,color:#fff
     style RR_V2 fill:#2196F3,color:#fff
 ```
+
+## Gateway + Full Resource Chain
+
+```mermaid
+graph TB
+    EXT["🌍 External Client"]
+
+    subgraph "Istio Ingress Gateway"
+        GW["👂 Gateway Envoy<br/>Port 80<br/>Host: reviews.example.com"]
+    end
+
+    subgraph "VirtualService (Weights live HERE)"
+        VS["📋 route:<br/>  - dest: v1, weight: 80<br/>  - dest: v2, weight: 20"]
+    end
+
+    subgraph "DestinationRule"
+        DR["🏷️ Subsets:<br/>v1: version=v1<br/>v2: version=v2"]
+    end
+
+    subgraph "Namespace"
+        V1["📦 v1 Pods (3 replicas)<br/>Gets 80% of traffic"]
+        V2["📦 v2 Pods (1 replica)<br/>Gets 20% of traffic"]
+    end
+
+    EXT --> GW
+    GW --> VS
+    VS --> DR
+    DR -->|"80%"| V1
+    DR -->|"20%"| V2
+
+    style GW fill:#4CAF50,color:#fff
+    style VS fill:#2196F3,color:#fff
+    style V1 fill:#4CAF50,color:#fff
+    style V2 fill:#FF9800,color:#fff
+```
+
+## End-to-End with Gateway
+
+```mermaid
+sequenceDiagram
+    participant EXT as External Client
+    participant LB as LoadBalancer
+    participant GW as Gateway Envoy
+    participant V1 as v1 Pod (stable)
+    participant V2 as v2 Pod (canary)
+
+    EXT->>LB: GET /reviews (Host: reviews.example.com)
+    LB->>GW: Forward to port 80
+    GW->>GW: Gateway: host match ✅
+    GW->>GW: VirtualService: roll dice 🎲
+
+    alt 80% chance
+        GW->>V1: Route to v1 (stable)
+        V1-->>EXT: 200 OK (v1 response)
+    else 20% chance
+        GW->>V2: Route to v2 (canary)
+        V2-->>EXT: 200 OK (v2 response)
+    end
+```
+

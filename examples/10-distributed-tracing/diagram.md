@@ -142,3 +142,63 @@ flowchart TD
     style TRACE fill:#4CAF50,color:#fff
     style SKIP fill:#9E9E9E,color:#fff
 ```
+
+## Gateway — Where Tracing Begins
+
+```mermaid
+graph TB
+    EXT["🌍 External Client"]
+
+    subgraph "Istio Ingress Gateway"
+        GW["👂 Gateway Envoy<br/>GENERATES initial trace<br/>x-b3-traceid: abc-123<br/>x-b3-spanid: span-0"]
+    end
+
+    VS["📋 VirtualService<br/>Route to frontend"]
+
+    subgraph "Service Mesh"
+        FE["📦 Frontend<br/>span-1 (child of span-0)"]
+        PROD["📦 Product<br/>span-2 (child of span-1)"]
+        DB["📦 Database<br/>span-3 (child of span-2)"]
+    end
+
+    JAEGER["🔍 Jaeger Collector"]
+
+    EXT --> GW
+    GW --> VS --> FE --> PROD --> DB
+    GW -.->|"span-0"| JAEGER
+    FE -.->|"span-1"| JAEGER
+    PROD -.->|"span-2"| JAEGER
+    DB -.->|"span-3"| JAEGER
+
+    style GW fill:#4CAF50,color:#fff
+    style JAEGER fill:#2196F3,color:#fff
+```
+
+## End-to-End Trace with Gateway
+
+```mermaid
+sequenceDiagram
+    participant EXT as External Client
+    participant GW as Gateway Envoy
+    participant FE as Frontend (Envoy + App)
+    participant PROD as Product (Envoy + App)
+    participant J as Jaeger
+
+    EXT->>GW: GET /page (no trace headers)
+    GW->>GW: Generate trace ID: abc-123<br/>Create span-0 (gateway)
+
+    GW->>FE: Forward + headers:<br/>x-b3-traceid: abc-123<br/>x-b3-spanid: span-1<br/>x-b3-parentspanid: span-0
+
+    FE->>PROD: Forward + headers:<br/>x-b3-traceid: abc-123<br/>x-b3-spanid: span-2<br/>x-b3-parentspanid: span-1
+
+    PROD-->>EXT: 200 OK
+
+    par Report spans
+        GW->>J: span-0 (15ms)
+        FE->>J: span-1 (12ms)
+        PROD->>J: span-2 (5ms)
+    end
+
+    Note over J: Complete trace:<br/>abc-123 with 3 spans
+```
+

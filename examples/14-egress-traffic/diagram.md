@@ -144,3 +144,75 @@ stateDiagram-v2
 
     RegistryOnly --> [*]: Secure ✅
 ```
+
+## Ingress vs Egress Gateway
+
+```mermaid
+graph LR
+    EXT_IN["🌍 External Client<br/>(inbound)"]
+
+    subgraph "Istio Mesh"
+        IGW["🚪 Ingress Gateway<br/>Controls INBOUND traffic"]
+        APP["📦 App Pods"]
+        EGW["🚪 Egress Gateway<br/>Controls OUTBOUND traffic"]
+    end
+
+    EXT_OUT["🌍 External APIs<br/>(outbound)"]
+
+    EXT_IN -->|"incoming requests"| IGW
+    IGW --> APP
+    APP --> EGW
+    EGW -->|"outgoing requests<br/>(controlled)"| EXT_OUT
+
+    style IGW fill:#4CAF50,color:#fff
+    style EGW fill:#FF9800,color:#fff
+```
+
+## Egress Gateway Flow
+
+```mermaid
+graph TB
+    POD["📦 App Pod"]
+    SIDE["⚡ Sidecar Envoy"]
+    
+    subgraph "Egress Gateway"
+        EGW["👂 Egress Gateway Envoy<br/>Logs all outbound traffic<br/>Enforces policies"]
+    end
+
+    SE["📋 ServiceEntry<br/>hosts: httpbin.org<br/>location: MESH_EXTERNAL"]
+    VS["📋 VirtualService<br/>Route through egress GW"]
+
+    EXT["🌍 httpbin.org"]
+
+    POD --> SIDE
+    SIDE -->|"route via"| VS
+    VS -->|"through egress"| EGW
+    SE -.->|"registers"| EXT
+    EGW -->|"allowed ✅"| EXT
+
+    style EGW fill:#FF9800,color:#fff
+    style SE fill:#2196F3,color:#fff
+```
+
+## End-to-End with Egress Gateway
+
+```mermaid
+sequenceDiagram
+    participant APP as App Pod
+    participant SIDE as Sidecar Envoy
+    participant EGW as Egress Gateway
+    participant EXT as httpbin.org
+
+    APP->>SIDE: GET https://httpbin.org/get
+    SIDE->>SIDE: Check ServiceEntry registry
+    Note over SIDE: httpbin.org registered ✅
+
+    SIDE->>EGW: Route through Egress Gateway<br/>(via VirtualService)
+    EGW->>EGW: Log: outbound to httpbin.org
+    EGW->>EGW: Apply policies (TLS, auth)
+    EGW->>EXT: Forward to httpbin.org
+    EXT-->>APP: 200 OK
+
+    Note over SIDE,EGW: Without Egress Gateway:<br/>pod → directly to internet (no logging/control)
+```
+

@@ -141,3 +141,62 @@ flowchart TD
     style RND fill:#FF9800,color:#fff
     style RR fill:#2196F3,color:#fff
 ```
+
+## Gateway + Full Resource Chain
+
+```mermaid
+graph TB
+    EXT["🌍 External Client"]
+
+    subgraph "Istio Ingress Gateway"
+        GW["👂 Gateway Envoy<br/>Port 80<br/>Host: httpbin.example.com"]
+    end
+
+    VS["📋 VirtualService<br/>Route to httpbin service"]
+
+    subgraph "DestinationRule (LB algorithm lives HERE)"
+        DR["🏷️ trafficPolicy:<br/>  loadBalancer:<br/>    simple: LEAST_CONN<br/><br/>Or: ROUND_ROBIN / RANDOM<br/>Or: consistentHash:<br/>      httpHeaderName: x-user"]
+    end
+
+    subgraph "lb-demo Namespace"
+        SVC["🔗 httpbin Service"]
+        P1["📦 Pod 1"]
+        P2["📦 Pod 2"]
+        P3["📦 Pod 3"]
+    end
+
+    EXT --> GW --> VS --> DR
+    DR -->|"chosen algorithm"| SVC
+    SVC --> P1
+    SVC --> P2
+    SVC --> P3
+
+    style GW fill:#4CAF50,color:#fff
+    style VS fill:#2196F3,color:#fff
+    style DR fill:#FF9800,color:#fff
+```
+
+## Where Each Config Lives
+
+```mermaid
+graph LR
+    subgraph "Gateway"
+        G["Accepts external traffic<br/>Port, Host, TLS"]
+    end
+    subgraph "VirtualService"
+        V["Routing rules<br/>Which service to call"]
+    end
+    subgraph "DestinationRule"
+        D["Load balancing algorithm<br/>ROUND_ROBIN<br/>RANDOM<br/>LEAST_CONN<br/>CONSISTENT_HASH"]
+    end
+    subgraph "Service + Pods"
+        P["Actual pod replicas"]
+    end
+
+    G -->|"routes to"| V -->|"destination"| D -->|"selects pod"| P
+
+    style G fill:#4CAF50,color:#fff
+    style V fill:#2196F3,color:#fff
+    style D fill:#FF9800,color:#fff
+```
+

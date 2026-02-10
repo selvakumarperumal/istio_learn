@@ -120,3 +120,83 @@ sequenceDiagram
     E->>V1: Forward to subset v1
     V1-->>C: Response from v1
 ```
+
+## Gateway — External Traffic Entry Point
+
+```mermaid
+graph TB
+    INTERNET["🌍 Internet / External Client"]
+
+    subgraph "Istio Ingress Gateway Pod"
+        LISTENER["👂 Listener<br/>Port 80 (HTTP)<br/>Port 443 (HTTPS)"]
+        HOST_MATCH{"Host header<br/>match?"}
+        ENVOY_GW["⚡ Envoy Proxy<br/>(istio-ingressgateway)"]
+    end
+
+    subgraph "Gateway Resource (YAML)"
+        GW_SPEC["spec.selector:<br/>  istio: ingressgateway<br/>spec.servers:<br/>  - port: 80<br/>    hosts: reviews.example.com"]
+    end
+
+    subgraph "VirtualService"
+        VS["gateways:<br/>  - reviews-gateway<br/>hosts:<br/>  - reviews.example.com"]
+    end
+
+    INTERNET -->|"HTTP request"| LISTENER
+    LISTENER --> HOST_MATCH
+    HOST_MATCH -->|"reviews.example.com ✅"| ENVOY_GW
+    HOST_MATCH -->|"unknown.com ❌"| DROP["404 Not Found"]
+    ENVOY_GW -->|"route rules"| VS
+    GW_SPEC -.->|"configures"| LISTENER
+
+    style LISTENER fill:#4CAF50,color:#fff
+    style ENVOY_GW fill:#2196F3,color:#fff
+    style DROP fill:#f44336,color:#fff
+```
+
+## Full Ingress Traffic Path (End-to-End)
+
+```mermaid
+sequenceDiagram
+    participant EXT as External Client
+    participant LB as LoadBalancer / NodePort
+    participant GW as Istio Gateway Pod<br/>(Envoy)
+    participant VS as VirtualService Rules
+    participant DR as DestinationRule
+    participant SVC as K8s Service
+    participant POD as App Pod (Envoy + App)
+
+    EXT->>LB: curl -H "Host: reviews.example.com"
+    LB->>GW: Forward to port 80
+    GW->>GW: Gateway: Match host "reviews.example.com" ✅
+    GW->>VS: Apply VirtualService routing rules
+    VS->>VS: Check headers → select subset
+    VS->>DR: Resolve subset → pod labels
+    DR->>SVC: Find pods with matching labels
+    SVC->>POD: Route to selected pod
+    POD-->>EXT: HTTP Response
+```
+
+## Gateway YAML ↔ VirtualService Binding
+
+```mermaid
+graph LR
+    subgraph "gateway.yaml"
+        GW["Gateway: reviews-gateway<br/>selector: istio: ingressgateway<br/>servers:<br/>  port: 80, host: *.example.com"]
+    end
+
+    subgraph "virtualservice.yaml"
+        VS["VirtualService<br/>gateways: [reviews-gateway]<br/>hosts: [reviews.example.com]"]
+    end
+
+    subgraph "Istio Ingress Gateway Pod"
+        ENVOY["Envoy Proxy<br/>label: istio=ingressgateway"]
+    end
+
+    GW -->|"selector matches<br/>pod label"| ENVOY
+    VS -->|"gateways field<br/>references name"| GW
+    ENVOY -->|"applies VS<br/>routing rules"| VS
+
+    style GW fill:#4CAF50,color:#fff
+    style VS fill:#2196F3,color:#fff
+    style ENVOY fill:#FF9800,color:#fff
+```

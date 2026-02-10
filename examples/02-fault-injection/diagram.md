@@ -124,3 +124,63 @@ graph TB
     style CHAOS fill:#f44336,color:#fff
     style OK fill:#4CAF50,color:#fff
 ```
+
+## Gateway — How External Traffic Reaches the Fault Filter
+
+```mermaid
+graph TB
+    EXT["🌍 External Client<br/>curl -H 'Host: httpbin.example.com'"]
+
+    subgraph "Istio Ingress Gateway Pod"
+        GW_LISTENER["👂 Gateway Listener<br/>Port 80<br/>Hosts: httpbin.example.com, *"]
+        GW_ENVOY["⚡ Gateway Envoy"]
+    end
+
+    subgraph "fault-demo Namespace"
+        subgraph "httpbin Pod"
+            SIDECAR["⚡ Sidecar Envoy<br/>┌─────────────────┐<br/>│ Fault Filter    │<br/>│ • Abort check   │<br/>│ • Delay check   │<br/>└─────────────────┘"]
+            APP["📦 httpbin container<br/>port 80"]
+        end
+    end
+
+    VS["📋 VirtualService<br/>httpbin-delay / abort / combined<br/>fault config lives HERE"]
+
+    EXT --> GW_LISTENER
+    GW_LISTENER --> GW_ENVOY
+    GW_ENVOY -->|"route via VS"| VS
+    VS -->|"configure faults on"| SIDECAR
+    SIDECAR -->|"if not aborted"| APP
+
+    style GW_LISTENER fill:#4CAF50,color:#fff
+    style SIDECAR fill:#FF5722,color:#fff
+    style VS fill:#2196F3,color:#fff
+```
+
+## Full Fault Injection Path — End-to-End
+
+```mermaid
+sequenceDiagram
+    participant EXT as External Client
+    participant LB as LoadBalancer / NodePort
+    participant GW as Gateway Envoy
+    participant SIDE as Sidecar Envoy<br/>(fault filter)
+    participant APP as httpbin App
+
+    EXT->>LB: GET /get (Host: httpbin.example.com)
+    LB->>GW: Forward to Istio Ingress port 80
+    GW->>GW: Gateway: host match ✅
+    GW->>SIDE: Route to httpbin pod via VirtualService
+
+    alt Abort triggered (dice roll within %)
+        SIDE->>SIDE: Fault filter: ABORT ❌
+        SIDE-->>EXT: 503 Service Unavailable
+        Note over APP: Never called!
+    else Delay triggered (dice roll within %)
+        SIDE->>SIDE: Fault filter: DELAY ⏳ (5s)
+        SIDE->>APP: Forward after delay
+        APP-->>EXT: 200 OK (slow)
+    else No fault
+        SIDE->>APP: Forward immediately
+        APP-->>EXT: 200 OK (fast)
+    end
+```

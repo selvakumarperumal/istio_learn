@@ -152,3 +152,65 @@ graph TD
     style PRINCIPAL fill:#2196F3,color:#fff
     style POLICY fill:#FF9800,color:#fff
 ```
+
+## Gateway + Authorization Policy Location
+
+```mermaid
+graph TB
+    EXT["🌍 External Client"]
+
+    subgraph "Istio Ingress Gateway"
+        GW["👂 Gateway Envoy<br/>Port 80"]
+        GW_AUTHZ["🔒 AuthorizationPolicy<br/>(can apply at gateway too)"]
+    end
+
+    VS["📋 VirtualService<br/>Route to orders-svc"]
+
+    subgraph "my-app Namespace"
+        subgraph "Orders Pod"
+            SIDE["⚡ Sidecar Envoy<br/>AuthorizationPolicy<br/>checks HERE"]
+            APP["📦 Orders App"]
+        end
+        subgraph "Database Pod"
+            DB_SIDE["⚡ Sidecar Envoy<br/>AuthorizationPolicy<br/>checks HERE"]
+            DB["📦 Database App"]
+        end
+    end
+
+    EXT --> GW
+    GW --> GW_AUTHZ
+    GW_AUTHZ -->|"allowed"| VS
+    VS --> SIDE
+    SIDE -->|"policy ✅"| APP
+    APP --> DB_SIDE
+    DB_SIDE -->|"policy ✅"| DB
+
+    style GW fill:#4CAF50,color:#fff
+    style GW_AUTHZ fill:#FF9800,color:#fff
+    style SIDE fill:#FF9800,color:#fff
+    style DB_SIDE fill:#FF9800,color:#fff
+```
+
+## End-to-End with Gateway + Auth
+
+```mermaid
+sequenceDiagram
+    participant EXT as External Client
+    participant GW as Gateway Envoy
+    participant FE_E as Frontend Sidecar
+    participant FE as Frontend App
+    participant ORD_E as Orders Sidecar
+    participant ORD as Orders App
+
+    EXT->>GW: GET /orders
+    GW->>GW: Gateway AuthZ: allow external? ✅
+    GW->>FE_E: Route via VirtualService
+    FE_E->>FE: Forward to frontend app
+    FE->>ORD_E: GET /api/orders
+    ORD_E->>ORD_E: AuthZ: source=frontend-sa? ✅
+    ORD_E->>ORD_E: AuthZ: method=GET? ✅
+    ORD_E->>ORD_E: AuthZ: path=/api/orders? ✅
+    ORD_E->>ORD: Allowed! Forward request
+    ORD-->>EXT: 200 OK
+```
+

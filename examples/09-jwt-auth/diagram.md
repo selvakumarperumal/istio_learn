@@ -143,3 +143,65 @@ graph LR
     style MTLS fill:#4CAF50,color:#fff
     style KEY fill:#FF9800,color:#fff
 ```
+
+## Gateway + JWT Authentication Path
+
+```mermaid
+graph TB
+    EXT["🌍 External Client<br/>+ Authorization: Bearer JWT"]
+
+    subgraph "Istio Ingress Gateway"
+        GW["👂 Gateway Envoy<br/>Port 80"]
+        RA["📋 RequestAuthentication<br/>Validates JWT signature<br/>Checks issuer, expiry"]
+        AP["🔒 AuthorizationPolicy<br/>Checks JWT claims"]
+    end
+
+    VS["📋 VirtualService<br/>Route to httpbin"]
+
+    subgraph "jwt-demo Namespace"
+        APP["📦 httpbin Pod"]
+    end
+
+    JWKS["🔑 JWKS Endpoint<br/>(GitHub/Auth0)"]
+
+    EXT --> GW
+    GW --> RA
+    RA -->|"fetch keys"| JWKS
+    RA -->|"token valid"| AP
+    RA -->|"token invalid"| REJECT1["❌ 401"]
+    AP -->|"claims match"| VS
+    AP -->|"wrong claims"| REJECT2["❌ 403"]
+    VS --> APP
+
+    style GW fill:#4CAF50,color:#fff
+    style RA fill:#2196F3,color:#fff
+    style AP fill:#FF9800,color:#fff
+    style REJECT1 fill:#f44336,color:#fff
+    style REJECT2 fill:#f44336,color:#fff
+```
+
+## End-to-End with Gateway + JWT
+
+```mermaid
+sequenceDiagram
+    participant EXT as External Client
+    participant GW as Gateway Envoy
+    participant JWKS as JWKS Endpoint
+    participant APP as httpbin Pod
+
+    Note over GW,JWKS: At startup
+    GW->>JWKS: GET /.well-known/jwks.json
+    JWKS-->>GW: Public keys cached ✅
+
+    EXT->>GW: GET /get + Bearer <JWT>
+    GW->>GW: RequestAuthentication:<br/>verify signature with cached key
+    GW->>GW: Check expiry, issuer ✅
+    GW->>GW: AuthorizationPolicy:<br/>check claims (groups, role)
+    GW->>APP: Forward to httpbin
+    APP-->>EXT: 200 OK ✅
+
+    Note over EXT,APP: Without valid JWT
+    EXT->>GW: GET /get (no token)
+    GW-->>EXT: 401 Unauthorized ❌
+```
+

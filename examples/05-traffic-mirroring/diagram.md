@@ -108,3 +108,64 @@ graph TD
     style CN3 fill:#FF9800,color:#fff
     style BG3 fill:#f44336,color:#fff
 ```
+
+## Gateway + Full Resource Chain
+
+```mermaid
+graph TB
+    EXT["🌍 External Client"]
+
+    subgraph "Istio Ingress Gateway"
+        GW["👂 Gateway Envoy<br/>Port 80<br/>Host: httpbin.example.com"]
+    end
+
+    subgraph "VirtualService (Mirror config lives HERE)"
+        VS["📋 route:<br/>  destination: httpbin-v1<br/>mirror:<br/>  host: httpbin-v2<br/>mirrorPercentage: 100"]
+    end
+
+    subgraph "DestinationRule"
+        DR["🏷️ Subsets:<br/>v1: version=v1<br/>v2: version=v2"]
+    end
+
+    subgraph "mirror-demo Namespace"
+        V1["📦 httpbin v1<br/>(primary — response sent)"]
+        V2["📦 httpbin v2<br/>(shadow — response discarded)"]
+    end
+
+    EXT --> GW
+    GW --> VS
+    VS --> DR
+    DR -->|"primary"| V1
+    DR -.->|"mirror copy"| V2
+
+    style GW fill:#4CAF50,color:#fff
+    style VS fill:#2196F3,color:#fff
+    style V1 fill:#4CAF50,color:#fff
+    style V2 fill:#9E9E9E,color:#fff
+```
+
+## End-to-End with Gateway
+
+```mermaid
+sequenceDiagram
+    participant EXT as External Client
+    participant LB as LoadBalancer
+    participant GW as Gateway Envoy
+    participant V1 as v1 Pod (primary)
+    participant V2 as v2 Pod (shadow)
+
+    EXT->>LB: GET /get (Host: httpbin.example.com)
+    LB->>GW: Forward to port 80
+    GW->>GW: Gateway: host match ✅
+
+    par Primary (response returned)
+        GW->>V1: GET /get
+        V1-->>GW: 200 OK
+        GW-->>EXT: 200 OK ✅
+    and Mirror (fire-and-forget)
+        GW->>V2: GET /get (Host: httpbin-shadow)
+        V2-->>GW: 200 OK
+        Note over GW: Response discarded 🗑️
+    end
+```
+

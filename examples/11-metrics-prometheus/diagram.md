@@ -145,3 +145,53 @@ stateDiagram-v2
         Write: Apply retention policy
     }
 ```
+
+## Gateway — Also a Metrics Source
+
+```mermaid
+graph TB
+    EXT["🌍 External Client"]
+
+    subgraph "Istio Ingress Gateway"
+        GW["👂 Gateway Envoy<br/>Records ingress metrics:<br/>• request count<br/>• response time<br/>• response codes"]
+    end
+
+    VS["📋 VirtualService"]
+
+    subgraph "Service Mesh"
+        subgraph "Pod (Envoy + App)"
+            SIDE["⚡ Sidecar Envoy<br/>Records mesh metrics"]
+            APP["App"]
+        end
+    end
+
+    PROM["📊 Prometheus"]
+
+    EXT --> GW --> VS --> SIDE --> APP
+    GW -.->|"scrape :15020"| PROM
+    SIDE -.->|"scrape :15020"| PROM
+
+    style GW fill:#4CAF50,color:#fff
+    style PROM fill:#E65100,color:#fff
+    style SIDE fill:#FF9800,color:#fff
+```
+
+## Gateway Metrics — What Gets Recorded
+
+```mermaid
+sequenceDiagram
+    participant EXT as External Client
+    participant GW as Gateway Envoy
+    participant APP as App Pod
+    participant P as Prometheus
+
+    EXT->>GW: GET /api/products
+    Note over GW: Record: source=istio-ingressgateway<br/>destination=product-svc<br/>response_code=200<br/>duration=45ms
+    GW->>APP: Forward
+    APP-->>EXT: 200 OK
+
+    Note over P: Every 15s scrape cycle
+    P->>GW: GET /stats/prometheus
+    GW-->>P: istio_requests_total{<br/>  source="ingressgateway",<br/>  destination="product-svc",<br/>  response_code="200"<br/>} = 1523
+```
+

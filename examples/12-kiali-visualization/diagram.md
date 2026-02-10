@@ -117,3 +117,48 @@ graph LR
     style YELLOW fill:#FF9800,color:#fff
     style RED fill:#f44336,color:#fff
 ```
+
+## Gateway in Kiali's Service Graph
+
+```mermaid
+graph LR
+    EXT["🌍 External Traffic"]
+
+    subgraph "Kiali Service Graph View"
+        GW["🚪 istio-ingressgateway<br/>🟢 Healthy<br/>150 req/s"]
+        FE["📦 Frontend<br/>🟢 100% healthy"]
+        PROD["📦 Product<br/>🟢 100% healthy"]
+        ORD["📦 Orders<br/>🟡 95% healthy"]
+        PAY["📦 Payment<br/>🔴 50% errors"]
+    end
+
+    EXT -->|"all ingress"| GW
+    GW -->|"80 req/s 🔒"| FE
+    FE -->|"50 req/s 🔒"| PROD
+    FE -->|"30 req/s 🔒"| ORD
+    ORD -->|"20 req/s 🔒"| PAY
+
+    style GW fill:#4CAF50,color:#fff
+    style FE fill:#4CAF50,color:#fff
+    style PROD fill:#4CAF50,color:#fff
+    style ORD fill:#FF9800,color:#fff
+    style PAY fill:#f44336,color:#fff
+```
+
+## Gateway Config Validation in Kiali
+
+```mermaid
+graph TB
+    subgraph "Kiali Validates"
+        GW_CHECK["✅ Gateway<br/>Port 80 configured<br/>Host matches VirtualService"]
+        VS_CHECK["✅ VirtualService<br/>References valid Gateway<br/>Destination host exists"]
+        DR_CHECK["✅ DestinationRule<br/>Subsets match deployment labels"]
+        SE_CHECK["⚠️ ServiceEntry<br/>Unreferenced by any VS"]
+    end
+
+    style GW_CHECK fill:#4CAF50,color:#fff
+    style VS_CHECK fill:#4CAF50,color:#fff
+    style DR_CHECK fill:#4CAF50,color:#fff
+    style SE_CHECK fill:#FF9800,color:#fff
+```
+

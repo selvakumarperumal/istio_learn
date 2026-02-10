@@ -140,3 +140,62 @@ graph TB
     style B1 fill:#f44336,color:#fff
     style B2 fill:#4CAF50,color:#fff
 ```
+
+## Gateway + mTLS: External vs Internal Traffic
+
+```mermaid
+graph TB
+    EXT["🌍 External Client<br/>(plain HTTPS or HTTP)"]
+
+    subgraph "Istio Ingress Gateway"
+        GW["👂 Gateway Envoy<br/>TLS termination here<br/>Port 443: HTTPS<br/>Port 80: HTTP"]
+    end
+
+    subgraph "Mesh Internal (auto mTLS)"
+        subgraph "Pod A"
+            ENVA["⚡ Envoy A"]
+            APPA["App A"]
+        end
+        subgraph "Pod B"
+            ENVB["⚡ Envoy B"]
+            APPB["App B"]
+        end
+    end
+
+    PA["🔒 PeerAuthentication<br/>mode: STRICT<br/>(applies to mesh-internal only)"]
+
+    EXT -->|"HTTPS/HTTP"| GW
+    GW -->|"🔒 mTLS (auto)"| ENVA
+    ENVA -->|"plain HTTP"| APPA
+    APPA -->|"plain HTTP"| ENVA
+    ENVA <-->|"🔒 mTLS"| ENVB
+    ENVB -->|"plain HTTP"| APPB
+    PA -.->|"enforces"| ENVA
+    PA -.->|"enforces"| ENVB
+
+    style GW fill:#4CAF50,color:#fff
+    style PA fill:#FF9800,color:#fff
+```
+
+## Full Traffic Path with Gateway + mTLS
+
+```mermaid
+sequenceDiagram
+    participant EXT as External Client
+    participant GW as Gateway Envoy
+    participant EA as Envoy A (sidecar)
+    participant AA as App A
+    participant EB as Envoy B (sidecar)
+    participant AB as App B
+
+    EXT->>GW: HTTPS request (TLS terminated at Gateway)
+    GW->>EA: mTLS connection (auto-encrypted)
+    Note over GW,EA: Gateway cert ↔ Sidecar cert<br/>Both from Istio CA
+    EA->>AA: Plain HTTP (localhost)
+    AA->>EA: Call Service B (plain HTTP)
+    EA->>EB: mTLS connection (auto-encrypted)
+    Note over EA,EB: Both verify each other's<br/>identity via Istio CA
+    EB->>AB: Plain HTTP (localhost)
+    AB-->>EXT: Response (encrypted at every hop)
+```
+

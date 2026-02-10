@@ -165,3 +165,63 @@ gantt
     Backoff 100ms      :crit, b3, 375, 475
     Attempt 4 (final)  :a4, 475, 575
 ```
+
+## Gateway + Full Resource Chain
+
+```mermaid
+graph TB
+    EXT["🌍 External Client"]
+
+    subgraph "Istio Ingress Gateway"
+        GW["👂 Gateway Envoy<br/>Port 80<br/>Host: product.example.com"]
+    end
+
+    subgraph "VirtualService (Retry/Timeout lives HERE)"
+        VS["📋 route:<br/>  destination: product-svc<br/>retries:<br/>  attempts: 3<br/>  retryOn: 5xx<br/>timeout: 5s<br/>perTryTimeout: 2s"]
+    end
+
+    DR["🏷️ DestinationRule<br/>Subset definitions"]
+
+    subgraph "Namespace"
+        SVC["🔗 product-svc"]
+        P1["📦 Product Pod 1"]
+        P2["📦 Product Pod 2"]
+    end
+
+    EXT --> GW
+    GW --> VS
+    VS --> DR
+    DR --> SVC
+    SVC --> P1
+    SVC --> P2
+
+    style GW fill:#4CAF50,color:#fff
+    style VS fill:#FF9800,color:#fff
+    style DR fill:#2196F3,color:#fff
+```
+
+## End-to-End Request with Retries
+
+```mermaid
+sequenceDiagram
+    participant EXT as External Client
+    participant LB as LoadBalancer
+    participant GW as Gateway Envoy
+    participant SIDE as Sidecar Envoy<br/>(retry logic)
+    participant APP as Product App
+
+    EXT->>LB: GET /products
+    LB->>GW: Forward to port 80
+    GW->>GW: Gateway: host match ✅
+    GW->>SIDE: Route via VirtualService
+
+    SIDE->>APP: Attempt 1
+    APP-->>SIDE: 503 Error ❌
+    Note over SIDE: retryOn: 5xx → retry!
+
+    SIDE->>APP: Attempt 2
+    APP-->>SIDE: 200 OK ✅
+
+    SIDE-->>EXT: 200 OK (client sees success!)
+```
+
