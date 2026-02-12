@@ -53,7 +53,39 @@ sequenceDiagram
     end
 ```
 
-## STRICT vs PERMISSIVE Mode
+## Detailed mTLS Modes
+
+### 1. PERMISSIVE Mode
+This is the default mode, often used during the migration to a Service Mesh. It allows a service to accept both plaintext and mTLS traffic.
+
+**How it works:** When Pod A sends a request to Pod B, Pod B’s sidecar checks if the connection is encrypted. If it is mTLS, it accepts it. If it is a standard plaintext connection (from a pod outside the mesh), it still accepts it.
+
+**Use Case:** Ideal when you have a mix of services—some with Istio sidecars and some without—and you don't want to break communication while you onboard everyone.
+
+**Security Risk:** It is less secure because it doesn't enforce encryption, leaving the door open for unauthenticated traffic.
+
+```mermaid
+graph TB
+    subgraph "PERMISSIVE Mode"
+        P_WITH["Pod with Sidecar<br/>(has cert)"]
+        P_WITHOUT["Pod without Sidecar<br/>(no cert)"]
+        P_TARGET["Target Service<br/>PERMISSIVE"]
+        
+        P_WITH -->|"mTLS ✅<br/>(Encrypted)"| P_TARGET
+        P_WITHOUT -->|"Plain HTTP ✅<br/>(Allowed)"| P_TARGET
+    end
+
+    style P_TARGET fill:#FF9800,color:#fff
+    style P_WITH fill:#4CAF50,color:#fff
+    style P_WITHOUT fill:#9E9E9E,color:#fff
+```
+
+### 2. STRICT Mode
+This mode enforces security. It ensures that the service only accepts traffic that is encrypted via mTLS.
+
+**How it works:** If Pod A (in the mesh) tries to talk to Pod B (in STRICT mode), the connection succeeds because both use sidecars to encrypt the traffic. However, if a pod outside the mesh (no sidecar) tries to talk to Pod B, the sidecar at Pod B will reject the connection immediately.
+
+**Use Case:** Production environments where security and compliance are priorities. It ensures "Zero Trust" within the cluster.
 
 ```mermaid
 graph TB
@@ -61,24 +93,37 @@ graph TB
         S_WITH["Pod with Sidecar<br/>(has cert)"]
         S_WITHOUT["Pod without Sidecar<br/>(no cert)"]
         S_TARGET["Target Service<br/>STRICT"]
-        S_WITH -->|"mTLS ✅"| S_TARGET
-        S_WITHOUT -->|"Plain HTTP ❌<br/>REJECTED"| S_TARGET
-    end
-
-    subgraph "PERMISSIVE Mode"
-        P_WITH["Pod with Sidecar<br/>(has cert)"]
-        P_WITHOUT["Pod without Sidecar<br/>(no cert)"]
-        P_TARGET["Target Service<br/>PERMISSIVE"]
-        P_WITH -->|"mTLS ✅"| P_TARGET
-        P_WITHOUT -->|"Plain HTTP ✅<br/>ALLOWED"| P_TARGET
+        
+        S_WITH -->|"mTLS ✅<br/>(Encrypted)"| S_TARGET
+        S_WITHOUT -->|"Plain HTTP ❌<br/>(Rejected)"| S_TARGET
     end
 
     style S_TARGET fill:#f44336,color:#fff
-    style P_TARGET fill:#FF9800,color:#fff
     style S_WITH fill:#4CAF50,color:#fff
-    style P_WITH fill:#4CAF50,color:#fff
     style S_WITHOUT fill:#9E9E9E,color:#fff
-    style P_WITHOUT fill:#9E9E9E,color:#fff
+```
+
+### 3. DISABLE Mode
+This mode disables mTLS completely. The service will only accept plaintext traffic.
+
+**How it works:** mTLS is turned off. Sidecars will not expect or engage in mTLS handshakes. All traffic is standard plaintext.
+
+**Use Case:** Debugging, legacy applications that cannot handle sidecars or mTLS, or when mTLS is handled by another layer.
+
+```mermaid
+graph TB
+    subgraph "DISABLE Mode"
+        D_WITH["Pod with Sidecar"]
+        D_WITHOUT["Pod without Sidecar"]
+        D_TARGET["Target Service<br/>DISABLE"]
+        
+        D_WITH -->|"Plain HTTP ✅"| D_TARGET
+        D_WITHOUT -->|"Plain HTTP ✅"| D_TARGET
+    end
+
+    style D_TARGET fill:#9E9E9E,color:#fff
+    style D_WITH fill:#4CAF50,color:#fff
+    style D_WITHOUT fill:#9E9E9E,color:#fff
 ```
 
 ## Certificate Identity Format
