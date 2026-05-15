@@ -2,39 +2,67 @@
 # GATEWAY: External Traffic Entry Point for Fault Injection Demo
 # ============================================================================
 # PURPOSE:
-#   Configures the Istio Ingress Gateway to accept external HTTP traffic
-#   for testing fault injection scenarios (delays and aborts).
+#   Configures a Kubernetes Gateway API resource to accept external HTTP
+#   traffic for testing fault injection scenarios (delays and aborts).
 #
 # HOW IT WORKS:
-#   External Request → Istio Ingress Gateway → This Gateway Config
-#                    → VirtualService (fault-delay/abort/combined)
-#                    → httpbin Pod (with injected faults)
+#   External Request → Gateway (this resource) → HTTPRoute (fault rules)
+#                    → httpbin Pod (with injected faults via Istio VirtualService)
+#
+# NOTE ON FAULT INJECTION:
+#   Gateway API HTTPRoute does NOT support fault injection directly.
+#   Fault injection is configured via Istio VirtualService on MESH traffic.
+#   The Gateway API Gateway replaces only the ingress gateway component.
+#   The fault-*.yaml files remain as Istio VirtualService for fault injection
+#   since this is an Istio-specific feature not available in Gateway API.
 #
 # RELATED FILES:
-#   - fault-delay.yaml    : Injects latency to test timeout handling
-#   - fault-abort.yaml    : Returns HTTP errors to test error handling
+#   - httproute.yaml      : Routes external traffic to httpbin (Gateway API)
+#   - fault-delay.yaml    : Injects latency (Istio VirtualService for mesh)
+#   - fault-abort.yaml    : Returns HTTP errors (Istio VirtualService for mesh)
 #   - fault-combined.yaml : Both delay and abort together
 # ============================================================================
-apiVersion: networking.istio.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: httpbin-gateway # Referenced by VirtualService configs
+  name: httpbin-gateway # Referenced by HTTPRoute via parentRefs
   namespace: fault-demo
 spec:
   # ─────────────────────────────────────────────────────────────────────────
-  # SELECTOR: Which Istio gateway workload should handle this config
+  # GATEWAY CLASS: Use Istio as the Gateway API implementation
   # ─────────────────────────────────────────────────────────────────────────
-  selector:
-    istio: ingressgateway # Default Istio ingress gateway pods
+  gatewayClassName: istio
 
   # ─────────────────────────────────────────────────────────────────────────
-  # SERVERS: Port and host configurations for incoming traffic
+  # LISTENERS: Port, protocol, and host configurations
   # ─────────────────────────────────────────────────────────────────────────
-  servers:
-    - port:
-        number: 80 # Listen on HTTP port 80
-        name: http # Port name (required for Istio)
-        protocol: HTTP # Protocol type
-      hosts:
-        - httpbin.example.com # Accept traffic for this hostname
-        - "*" # Also accept any hostname (for testing)
+  listeners:
+    - name: http # Listener name
+      port: 80 # Listen on HTTP port 80
+      protocol: HTTP # Protocol type
+      allowedRoutes:
+        namespaces:
+          from: Same # Only allow routes from the same namespace
+---
+# ============================================================================
+# HTTP ROUTE: Route external traffic to httpbin service
+# ============================================================================
+# This replaces the external-facing portion of the Istio VirtualService.
+# Fault injection rules remain in Istio VirtualService (fault-*.yaml) as
+# fault injection is an Istio-specific feature not in Gateway API spec.
+# ============================================================================
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: httpbin-route
+  namespace: fault-demo
+spec:
+  parentRefs:
+    - name: httpbin-gateway
+      sectionName: http
+  hostnames:
+    - httpbin.example.com
+  rules:
+    - backendRefs:
+        - name: httpbin
+          port: 80

@@ -2,33 +2,36 @@
 # GATEWAY: External Traffic Entry Point for Retries/Timeouts Demo
 # ============================================================================
 # PURPOSE:
-#   Configures the Istio Ingress Gateway to accept external HTTP traffic
-#   for testing retry and timeout behaviors.
+#   Configures a Kubernetes Gateway API resource to accept external HTTP
+#   traffic for testing retry and timeout behaviors.
+#
+# NOTE: Retry and timeout policies are configured in the HTTPRoute resource.
+#   Gateway API supports timeouts natively. For advanced retry policies,
+#   Istio extends the Gateway API with annotations or BackendPolicy.
 #
 # RELATED FILES:
-#   - virtual-service.yaml : Defines retry/timeout policies
-#   - deployment.yaml      : The httpbin target service
+#   - httproute.yaml : Defines routing with retry/timeout policies
+#   - deployment.yaml : The httpbin target service
 # ============================================================================
-apiVersion: networking.istio.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: httpbin-gateway # Referenced by VirtualService
+  name: httpbin-gateway # Referenced by HTTPRoute via parentRefs
   namespace: retry-demo
 spec:
   # ─────────────────────────────────────────────────────────────────────────
-  # SELECTOR: Which Istio gateway workload handles this config
+  # GATEWAY CLASS: Use Istio as the Gateway API implementation
   # ─────────────────────────────────────────────────────────────────────────
-  selector:
-    istio: ingressgateway # Default Istio ingress gateway pods
+  gatewayClassName: istio
 
   # ─────────────────────────────────────────────────────────────────────────
-  # SERVERS: Port and host configurations
+  # LISTENERS: Port, protocol, and host configurations
   # ─────────────────────────────────────────────────────────────────────────
-  servers:
-    - port:
-        number: 80 # Listen on HTTP port 80
-        name: http # Port name (required for Istio)
-        protocol: HTTP # Protocol type
-      hosts:
-        - httpbin.example.com # Accept traffic for this hostname
-        - "*" # Also accept any hostname (for testing)
+  listeners:
+    - name: http # Listener name
+      port: 80 # Listen on HTTP port 80
+      protocol: HTTP # Protocol type
+      hostname: "*.example.com" # Accept traffic for subdomains
+      allowedRoutes:
+        namespaces:
+          from: Same # Only allow routes from the same namespace

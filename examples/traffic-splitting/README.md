@@ -1,6 +1,6 @@
 # Traffic Splitting Example (80/20 Canary Deployment)
 
-This example demonstrates how to split traffic between two versions of a service using Istio VirtualService.
+This example demonstrates how to split traffic between two versions of a service using Gateway API HTTPRoute.
 
 ## 📋 What You'll Learn
 
@@ -19,7 +19,7 @@ This example demonstrates how to split traffic between two versions of a service
                                      │
                                      ▼
                            ┌─────────────────┐
-                           │ VirtualService  │
+                           │   HTTPRoute     │
                            │ (Traffic Rules) │
                            └────────┬────────┘
                                     │
@@ -62,8 +62,8 @@ DestinationRule subset: version: v1 → further filters pods
 | `deployment-v2.yaml` | Deployment for version 2 (1 replica, app=myapp) |
 | `service.yaml` | Kubernetes Service **named reviews-svc** |
 | `destination-rule.yaml` | Defines v1 and v2 subsets (host: reviews-svc) |
-| `virtual-service.yaml` | Traffic splitting rules (80/20) |
-| `gateway.yaml` | Exposes service externally |
+| `httproute.yaml` | Traffic splitting rules - 80/20 (Gateway API) |
+| `gateway.yaml` | Gateway API gateway for external access |
 
 ## 🚀 Prerequisites
 
@@ -115,10 +115,10 @@ kubectl wait --for=condition=Ready pods --all -n traffic-demo --timeout=120s
 kubectl apply -f destination-rule.yaml
 ```
 
-### Step 7: Apply VirtualService
+### Step 7: Apply HTTPRoute
 
 ```bash
-kubectl apply -f virtual-service.yaml
+kubectl apply -f httproute.yaml
 ```
 
 ### Step 8: Apply Gateway
@@ -141,19 +141,16 @@ kubectl apply -f gateway.yaml
 ./test.sh
 ```
 
-### Get the Gateway URL (Minikube)
+### Get the Gateway URL (Gateway API)
 
 ```bash
-# In a separate terminal
-minikube tunnel
-
-# Get the external IP
-export INGRESS_IP=$(kubectl get svc -n istio-ingress istio-ingressgateway \
-  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+# Get the Gateway API address
+export GATEWAY_IP=$(kubectl get gateway reviews-gateway -n traffic-demo \
+  -o jsonpath='{.status.addresses[0].value}')
 
 # Send test requests
 for i in {1..10}; do
-  curl -s -H "Host: reviews.example.com" http://$INGRESS_IP/version
+  curl -s -H "Host: reviews.example.com" http://$GATEWAY_IP/version
 done
 ```
 
@@ -184,17 +181,17 @@ kubectl delete namespace traffic-demo
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                                                                         │
-│   Request → Gateway → VirtualService → DestinationRule → Pods          │
+│   Request → Gateway (Gateway API) → HTTPRoute → BackendRefs → Pods       │
 │                                                                         │
 │   ┌────────────────────────────────────────────────────────────────────┐│
-│   │  VirtualService (host: reviews-svc)                               ││
-│   │  └── Routes traffic to Service by NAME                            ││
+│   │  HTTPRoute (hostnames: reviews.example.com)                       ││
+│   │  └── Routes traffic to per-version Services                       ││
 │   │                                                                    ││
-│   │  DestinationRule (host: reviews-svc)                              ││
-│   │  └── Defines subsets by pod LABELS (version: v1, v2)             ││
+│   │  BackendRefs (weight-based)                                       ││
+│   │  └── reviews-v1-svc: 80%, reviews-v2-svc: 20%                    ││
 │   │                                                                    ││
-│   │  Service (name: reviews-svc, selector: app=myapp)                 ││
-│   │  └── Finds pods by LABEL (app=myapp)                              ││
+│   │  Service (name: reviews-v1-svc, selector: app=myapp,version=v1)   ││
+│   │  └── Finds pods by LABELS                                         ││
 │   │                                                                    ││
 │   │  Pods (labels: app=myapp, version=v1 or v2)                       ││
 │   │  └── Have BOTH labels for matching                                ││

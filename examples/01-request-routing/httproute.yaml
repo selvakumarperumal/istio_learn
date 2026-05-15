@@ -1,10 +1,13 @@
 # ============================================================================
-# VIRTUAL SERVICE: Header-Based Request Routing
+# HTTP ROUTE: Header-Based Request Routing (Gateway API)
 # ============================================================================
 # PURPOSE:
 #   Define HTTP routing rules to direct traffic to different service versions
 #   based on request headers. This enables A/B testing, canary deployments,
 #   and user-segmentation without code changes.
+#
+#   This replaces the Istio VirtualService with the standard Kubernetes
+#   Gateway API HTTPRoute resource.
 #
 # 🔄 TRAFFIC FLOW:
 #   ┌─────────────────────────────────────────────────────────────────────────┐
@@ -13,21 +16,21 @@
 #   │        │                                                                │
 #   │        ▼                                                                │
 #   │   ┌─────────────────────────────────────────────────────────────────┐   │
-#   │   │               VirtualService: reviews-routing                   │   │
+#   │   │               HTTPRoute: reviews-routing                        │   │
 #   │   │                                                                 │   │
 #   │   │   Check headers:                                                │   │
 #   │   │   ┌────────────────────────────────────────────────────────┐    │   │
-#   │   │   │ x-user-type: beta?     ──yes─────────────► v2 (Beta)   │    │   │
+#   │   │   │ x-user-type: beta?     ──yes──► reviews-v2-svc (Beta) │    │   │
 #   │   │   └────────────────────────────────────────────────────────┘    │   │
 #   │   │                 │no                                             │   │
 #   │   │                 ▼                                               │   │
 #   │   │   ┌────────────────────────────────────────────────────────┐    │   │
-#   │   │   │ x-user-type: internal? ──yes─────────────► v3 (Internal)│   │   │
+#   │   │   │ x-user-type: internal? ──yes──► reviews-v3-svc (Int.) │    │   │
 #   │   │   └────────────────────────────────────────────────────────┘    │   │
 #   │   │                 │no                                             │   │
 #   │   │                 ▼                                               │   │
 #   │   │   ┌────────────────────────────────────────────────────────┐    │   │
-#   │   │   │ Default (no match)     ──────────────────► v1 (Stable)  │   │   │
+#   │   │   │ Default (no match)     ──────► reviews-v1-svc (Stable)│    │   │
 #   │   │   └────────────────────────────────────────────────────────┘    │   │
 #   │   │                                                                 │   │
 #   │   └─────────────────────────────────────────────────────────────────┘   │
@@ -38,29 +41,35 @@
 #   Rules are evaluated TOP TO BOTTOM. First match wins!
 #   The DEFAULT route (no match conditions) should always be LAST.
 #
+# ⚠️  KEY DIFFERENCE FROM VIRTUALSERVICE:
+#   Gateway API HTTPRoute does NOT support DestinationRule subsets.
+#   Instead, we create separate Kubernetes Services per version:
+#     - reviews-v1-svc → selects pods with app=reviews, version=v1
+#     - reviews-v2-svc → selects pods with app=reviews, version=v2
+#     - reviews-v3-svc → selects pods with app=reviews, version=v3
+#
 # 🧪 HOW TO TEST:
 #   # Test v2 (beta users):
-#   curl -H "x-user-type: beta" http://reviews.example.com/
+#   curl -H "x-user-type: beta" http://<GATEWAY_IP>/
 #
 #   # Test v3 (internal team):
-#   curl -H "x-user-type: internal" http://reviews.example.com/
+#   curl -H "x-user-type: internal" http://<GATEWAY_IP>/
 #
 #   # Test v1 (default - no header):
-#   curl http://reviews.example.com/
+#   curl http://<GATEWAY_IP>/
 #
-# 📝 HEADER MATCHING OPTIONS:
-#   exact:  "beta"           Exact string match
-#   prefix: "beta"           Starts with "beta"
-#   regex:  "^(beta|test)$"  Regular expression match
+# 📝 HEADER MATCHING OPTIONS (Gateway API):
+#   Exact:              type: Exact, value: "beta"
+#   RegularExpression:  type: RegularExpression, value: "^(beta|test)$"
 #
 # 🔗 RELATED FILES:
-#   - destination-rule.yaml: Defines subsets v1, v2, v3
-#   - deployment.yaml: Creates pods for each version
-#   - gateway.yaml: Ingress for external traffic
+#   - service.yaml      : Per-version Services for routing
+#   - deployment.yaml   : Creates pods for each version
+#   - gateway.yaml      : Gateway API entry point for external traffic
 # ============================================================================
 
-apiVersion: networking.istio.io/v1beta1
-kind: VirtualService
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 
 metadata:
   name: reviews-routing
@@ -68,88 +77,57 @@ metadata:
 
 spec:
   # ═══════════════════════════════════════════════════════════════════════════
-  # HOSTS: Which service(s) does this VirtualService apply to?
+  # PARENT REFS: Which Gateway does this route attach to?
   # ═══════════════════════════════════════════════════════════════════════════
-  # These are the hostnames that trigger these routing rules.
+  # In Gateway API, HTTPRoute attaches to a Gateway via parentRefs.
+  # This replaces the VirtualService "gateways" field.
   #
-  # reviews-svc: Internal Kubernetes service name (for mesh traffic)
-  # reviews.example.com: External hostname (for Gateway traffic)
-  #
-  hosts:
-    - reviews-svc # Internal service name
-    - reviews.example.com # External hostname for Gateway
+  parentRefs:
+    - name: reviews-gateway # Reference to the Gateway resource
+      sectionName: http # Matches the listener name in Gateway
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # GATEWAYS: Which traffic sources does this apply to?
+  # HOSTNAMES: Which hostnames does this route match?
   # ═══════════════════════════════════════════════════════════════════════════
-  #
-  # ┌─────────────────────────────────────────────────────────────────────────┐
-  # │  EXTERNAL TRAFFIC (via Gateway)                                         │
-  # │  ─────────────────────────────                                          │
-  # │  Internet → Ingress Gateway → VirtualService → Pod                     │
-  # │             (reviews-gateway)                                           │
-  # │                                                                         │
-  # │  Example: User accessing https://reviews.example.com                    │
-  # ├─────────────────────────────────────────────────────────────────────────┤
-  # │  MESH TRAFFIC (internal pod-to-pod)                                     │
-  # │  ──────────────────────────────────                                     │
-  # │  Pod A (frontend) → VirtualService → Pod B (reviews)                   │
-  # │                     (mesh gateway)                                      │
-  # │                                                                         │
-  # │  Example: productpage pod calling reviews service internally            │
-  # └─────────────────────────────────────────────────────────────────────────┘
-  #
-  # WHY INCLUDE BOTH?
-  #   reviews-gateway: Applies to traffic from OUTSIDE the cluster
-  #   mesh:            Applies to traffic from INSIDE the cluster (pod-to-pod)
-  #
-  # If you only specify "reviews-gateway", routing rules would apply to
-  # external requests but NOT to internal service-to-service calls!
-  #
-  gateways:
-    - reviews-gateway # External traffic via Gateway
-    - mesh # Internal mesh traffic (pod-to-pod)
+  # Replaces VirtualService "hosts" field.
+  # Must be a subset of the Gateway listener's hostname.
+  hostnames:
+    - reviews.example.com
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # HTTP ROUTING RULES
+  # RULES: HTTP routing rules with header-based matching
   # ═══════════════════════════════════════════════════════════════════════════
   # Rules are evaluated in ORDER. First matching rule is applied.
   # Always put more specific rules FIRST, default/catch-all rules LAST.
   #
-  http:
+  rules:
     # ─────────────────────────────────────────────────────────────────────────
     # RULE 1: Route beta testers to v2
     # ─────────────────────────────────────────────────────────────────────────
     # Use case: Let beta testers preview new features before public release.
-    # The beta version (v2) might have experimental features being validated.
     #
-    - match:
+    - matches:
         - headers:
-            x-user-type: # Custom header name (set by your app/proxy)
-              exact: beta # Exact string match (case-sensitive)
-            # Other match options:
-            #   prefix: "beta"   # Matches "beta", "beta-user", "beta123"
-            #   regex: "^beta.*" # Regex pattern matching
-      route:
-        - destination:
-            host: reviews-svc # Target service name
-            subset: v2 # Subset defined in DestinationRule
-          # weight: 100          # Optional: 100% to this destination
+            - name: x-user-type
+              type: Exact
+              value: beta
+      backendRefs:
+        - name: reviews-v2-svc # Per-version Service (replaces subset)
+          port: 80
 
     # ─────────────────────────────────────────────────────────────────────────
     # RULE 2: Route internal team to v3
     # ─────────────────────────────────────────────────────────────────────────
-    # Use case: Internal testing of cutting-edge features, debugging builds,
-    # or experimental code not ready for any external users.
+    # Use case: Internal testing of cutting-edge features.
     #
-    - match:
+    - matches:
         - headers:
-            x-user-type:
-              exact: internal
-      route:
-        - destination:
-            host: reviews-svc
-            subset: v3
+            - name: x-user-type
+              type: Exact
+              value: internal
+      backendRefs:
+        - name: reviews-v3-svc # Per-version Service (replaces subset)
+          port: 80
 
     # ─────────────────────────────────────────────────────────────────────────
     # DEFAULT RULE: All other traffic goes to v1 (stable)
@@ -157,55 +135,47 @@ spec:
     # IMPORTANT: This rule has NO match conditions, so it catches everything
     # that didn't match above. This MUST be the last rule!
     #
-    # v1 is your production-stable version that all regular users receive.
-    #
-    - route:
-        - destination:
-            host: reviews-svc
-            subset: v1 # Stable production version
+    - backendRefs:
+        - name: reviews-v1-svc # Stable production version
+          port: 80
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 📚 ADDITIONAL ROUTING EXAMPLES
+# 📚 ADDITIONAL ROUTING EXAMPLES (Gateway API)
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # ROUTE BY URI PATH:
-#   - match:
-#       - uri:
-#           prefix: "/api/v2"
-#     route:
-#       - destination:
-#           host: reviews-svc
-#           subset: v2
+#   rules:
+#     - matches:
+#         - path:
+#             type: PathPrefix
+#             value: /api/v2
+#       backendRefs:
+#         - name: reviews-v2-svc
+#           port: 80
 #
 # ROUTE BY QUERY PARAMETER:
-#   - match:
-#       - queryParams:
-#           version:
-#             exact: "v2"
-#     route:
-#       - destination:
-#           host: reviews-svc
-#           subset: v2
-#
-# ROUTE BY SOURCE (calling service):
-#   - match:
-#       - sourceLabels:
-#           app: productpage
-#     route:
-#       - destination:
-#           host: reviews-svc
-#           subset: v2
+#   rules:
+#     - matches:
+#         - queryParams:
+#             - name: version
+#               type: Exact
+#               value: v2
+#       backendRefs:
+#         - name: reviews-v2-svc
+#           port: 80
 #
 # COMBINE MULTIPLE CONDITIONS (AND logic):
-#   - match:
-#       - headers:
-#           x-user-type:
-#             exact: beta
-#         uri:
-#           prefix: "/api"      # Both conditions must be true
-#     route:
-#       - destination:
-#           host: reviews-svc
-#           subset: v2
+#   rules:
+#     - matches:
+#         - headers:
+#             - name: x-user-type
+#               type: Exact
+#               value: beta
+#           path:
+#             type: PathPrefix
+#             value: /api
+#       backendRefs:
+#         - name: reviews-v2-svc
+#           port: 80
 #
 # ═══════════════════════════════════════════════════════════════════════════════

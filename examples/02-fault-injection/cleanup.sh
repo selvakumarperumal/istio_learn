@@ -6,7 +6,7 @@
 #   Deletes the entire "fault-demo" namespace, which automatically removes:
 #     - httpbin Deployment and its pods
 #     - httpbin Service
-#     - Istio Gateway resource
+#     - Gateway API Gateway and HTTPRoute resources
 #     - All VirtualService resources (fault-delay, fault-abort, fault-combined)
 #     - Any ConfigMaps, Secrets, or other resources in the namespace
 #
@@ -15,9 +15,8 @@
 #   It removes ALL resources in one operation, ensuring nothing is left behind.
 #   The --ignore-not-found flag prevents errors if the namespace doesn't exist.
 #
-# NOTE:
-#   The Istio Ingress Gateway (in istio-ingress namespace) is NOT affected
-#   by this cleanup - it's a shared resource used by other examples too.
+#   The Gateway API provisions a gateway Service in the namespace, which
+#   is automatically cleaned up when the namespace is deleted.
 #
 # USAGE:
 #   ./cleanup.sh

@@ -77,10 +77,10 @@ spec:
     - httpbin.example.com # External traffic via Gateway
 
   # ─────────────────────────────────────────────────────────────────────────
-  # GATEWAYS: Both external and internal traffic sources
+  # GATEWAYS: Mesh-internal traffic only
   # ─────────────────────────────────────────────────────────────────────────
+  # External traffic is now handled by Gateway API (gateway.yaml → HTTPRoute).
   gateways:
-    - httpbin-gateway # External traffic (defined in gateway.yaml)
     - mesh # Internal mesh traffic (built-in keyword)
 
   # ─────────────────────────────────────────────────────────────────────────

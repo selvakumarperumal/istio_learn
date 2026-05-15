@@ -11,8 +11,8 @@
 #   3. Deployment v2: 1 replica (canary/new version)
 #   4. Service: reviews-svc (selects all versions via app=myapp label)
 #   5. DestinationRule: defines v1 and v2 subsets with traffic policies
-#   6. VirtualService: 80/20 traffic split with retries and timeouts
-#   7. Gateway: external access via Istio Ingress Gateway
+#   6. HTTPRoute: 80/20 traffic split with timeouts (Gateway API)
+#   7. Gateway: external access via Kubernetes Gateway API
 #
 # AFTER DEPLOYMENT:
 #   Run ./test.sh to verify 80/20 traffic distribution
@@ -46,9 +46,9 @@ kubectl wait --for=condition=Ready pods --all -n traffic-demo --timeout=120s
 echo -e "\n6. Applying DestinationRule..."
 kubectl apply -f destination-rule.yaml
 
-# Step 7: Apply VirtualService (80/20 traffic split)
-echo -e "\n7. Applying VirtualService (80/20 split)..."
-kubectl apply -f virtual-service.yaml
+# Step 7: Apply HTTPRoute (80/20 traffic split)
+echo -e "\n7. Applying HTTPRoute (80/20 split)..."
+kubectl apply -f httproute.yaml
 
 # Step 8: Apply Gateway (external access)
 echo -e "\n8. Applying Gateway..."
@@ -62,9 +62,9 @@ echo -e "\nServices:"
 kubectl get svc -n traffic-demo
 
 echo -e "\nIstio resources:"
-kubectl get virtualservice,destinationrule,gateway -n traffic-demo
+kubectl get httproute,destinationrule,gateway -n traffic-demo
 
 echo -e "\n=== Testing Instructions ==="
-echo "1. Get gateway URL: minikube service istio-ingressgateway -n istio-ingress --url"
+echo "1. Get gateway URL: kubectl get gateway reviews-gateway -n traffic-demo -o jsonpath='{.status.addresses[0].value}'"
 echo "2. Test: curl -H 'Host: reviews.example.com' <URL>/version"
 echo "3. Or run: ./test.sh"

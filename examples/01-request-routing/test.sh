@@ -38,10 +38,10 @@
 #
 # TROUBLESHOOTING:
 #   - If requests fail: Check if gateway is accessible
-#     $ kubectl get svc -n istio-ingress istio-ingressgateway
+#     $ kubectl get gateway reviews-gateway -n routing-demo
 #
-#   - If wrong version returned: Check VirtualService rules
-#     $ kubectl describe vs reviews-routing -n routing-demo
+#   - If wrong version returned: Check HTTPRoute rules
+#     $ kubectl describe httproute reviews-routing -n routing-demo
 #
 #   - If 503 errors: Check if pods are ready
 #     $ kubectl get pods -n routing-demo
@@ -54,14 +54,21 @@
 echo "=== Request Routing Test ==="
 
 # ════════════════════════════════════════════════════════════════════════════
-# STEP 1: Get the Istio Ingress Gateway URL
+# STEP 1: Get the Gateway API Gateway URL
 # ════════════════════════════════════════════════════════════════════════════
-# In Minikube, we access the gateway via NodePort + Minikube IP
-# The gateway exposes port 80 (HTTP) via a NodePort service
+# Gateway API provisions its own Service automatically. We get the IP
+# from the Gateway's status, or fall back to NodePort for Minikube.
 
-NODE_PORT=$(kubectl get svc -n istio-ingress istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="http2")].nodePort}' 2>/dev/null)
-MINIKUBE_IP=$(minikube ip 2>/dev/null)
-GATEWAY_URL="http://$MINIKUBE_IP:$NODE_PORT"
+GATEWAY_IP=$(kubectl get gateway reviews-gateway -n routing-demo -o jsonpath='{.status.addresses[0].value}' 2>/dev/null)
+if [ -n "$GATEWAY_IP" ]; then
+    GATEWAY_URL="http://$GATEWAY_IP"
+else
+    # Fallback: Get the auto-provisioned gateway Service via NodePort (Minikube)
+    GW_SVC=$(kubectl get svc -n routing-demo -l gateway.networking.k8s.io/gateway-name=reviews-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    NODE_PORT=$(kubectl get svc -n routing-demo "$GW_SVC" -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}' 2>/dev/null)
+    MINIKUBE_IP=$(minikube ip 2>/dev/null)
+    GATEWAY_URL="http://$MINIKUBE_IP:$NODE_PORT"
+fi
 
 echo "Using: $GATEWAY_URL"
 

@@ -10,7 +10,7 @@
 #      $ ./deploy-all.sh
 #
 #   2. Get the gateway URL:
-#      $ export GATEWAY=$(kubectl get svc istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+#      $ export GATEWAY=$(kubectl get gateway httpbin-gateway -n jwt-demo -o jsonpath='{.status.addresses[0].value}')
 #
 #   3. Test WITHOUT token (should be rejected):
 #      $ curl -v http://$GATEWAY/headers

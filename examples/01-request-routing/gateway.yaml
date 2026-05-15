@@ -2,37 +2,55 @@
 # GATEWAY: External Traffic Entry Point for Request Routing Demo
 # ============================================================================
 # PURPOSE:
-#   Configures the Istio Ingress Gateway to accept external HTTP traffic
-#   and route it to the VirtualService for header-based routing decisions.
+#   Configures a Kubernetes Gateway API resource to accept external HTTP
+#   traffic and route it to HTTPRoute resources for header-based routing.
+#
+# GATEWAY API vs ISTIO GATEWAY:
+#   ┌─────────────────────────────────────────────────────────────────────────┐
+#   │  Istio Gateway (OLD):              Kubernetes Gateway API (NEW):       │
+#   │  ──────────────────────            ─────────────────────────────       │
+#   │  apiVersion:                       apiVersion:                         │
+#   │    networking.istio.io/v1beta1       gateway.networking.k8s.io/v1      │
+#   │  kind: Gateway                     kind: Gateway                       │
+#   │  spec:                             spec:                               │
+#   │    selector:                         gatewayClassName: istio            │
+#   │      istio: ingressgateway           listeners:                        │
+#   │    servers:                            - name: http                     │
+#   │      - port:                             port: 80                      │
+#   │          number: 80                      protocol: HTTP                │
+#   │          protocol: HTTP                  allowedRoutes:                │
+#   │        hosts:                              namespaces:                 │
+#   │          - "*.example.com"                   from: Same               │
+#   └─────────────────────────────────────────────────────────────────────────┘
 #
 # HOW IT WORKS:
-#   External Request → Istio Ingress Gateway → This Gateway Config
-#                    → VirtualService (reviews-routing) → Destination Pods
+#   External Request → Gateway (this resource) → HTTPRoute → Destination Pods
 #
 # RELATED FILES:
-#   - virtual-service.yaml : Defines the actual routing rules
+#   - httproute.yaml      : Defines the actual routing rules (replaces VirtualService)
 #   - destination-rule.yaml : Defines the v1/v2/v3 subsets
 # ============================================================================
-apiVersion: networking.istio.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: reviews-gateway # Referenced by VirtualService
+  name: reviews-gateway # Referenced by HTTPRoute via parentRefs
   namespace: routing-demo
 spec:
   # ─────────────────────────────────────────────────────────────────────────
-  # SELECTOR: Which Istio gateway workload should handle this config
+  # GATEWAY CLASS: Which gateway implementation to use
   # ─────────────────────────────────────────────────────────────────────────
-  selector:
-    istio: ingressgateway # Default Istio ingress gateway pods
+  # "istio" tells Kubernetes to use Istio as the Gateway API implementation.
+  # Istio automatically provisions the required proxy/load balancer.
+  gatewayClassName: istio
 
   # ─────────────────────────────────────────────────────────────────────────
-  # SERVERS: Port and host configurations for incoming traffic
+  # LISTENERS: Port, protocol, and host configurations
   # ─────────────────────────────────────────────────────────────────────────
-  servers:
-    - port:
-        number: 80 # Listen on HTTP port 80
-        name: http # Port name (required for Istio)
-        protocol: HTTP # Protocol type
-      hosts:
-        - reviews.example.com # Accept traffic for this hostname
-        - "*" # Also accept any hostname (for testing)
+  listeners:
+    - name: http # Listener name (used by HTTPRoute parentRefs.sectionName)
+      port: 80 # Listen on HTTP port 80
+      protocol: HTTP # Protocol type
+      hostname: "*.example.com" # Accept traffic for any subdomain of example.com
+      allowedRoutes:
+        namespaces:
+          from: Same # Only allow HTTPRoutes from the same namespace

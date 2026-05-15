@@ -1,0 +1,138 @@
+# ============================================================================
+# HTTP ROUTE: TRAFFIC SPLITTING RULES (80% v1 / 20% v2) - Gateway API
+# ============================================================================
+#
+# 📌 What is this file?
+# ---------------------
+# An HTTPRoute defines HOW traffic is routed to backend services.
+# This is where the actual 80/20 traffic split is configured.
+# This replaces the Istio VirtualService with the standard Gateway API.
+#
+# 🔄 Traffic Flow:
+# ----------------
+#
+#   ┌─────────────────────────────────────────────────────────────────────┐
+#   │                                                                     │
+#   │   Traffic → Gateway → HTTPRoute → BackendRefs → Pods               │
+#   │                                                                     │
+#   │   100% traffic                                                      │
+#   │        │                                                            │
+#   │        ▼                                                            │
+#   │   ┌─────────────────┐                                               │
+#   │   │   HTTPRoute     │                                               │
+#   │   │ reviews-routing │                                               │
+#   │   │                 │                                               │
+#   │   │ backendRefs:    │                                               │
+#   │   │   v1-svc: 80%   │──────────────────────────────────┐            │
+#   │   │   v2-svc: 20%   │──────────────────────────────┐   │            │
+#   │   └─────────────────┘                              │   │            │
+#   │                                                    │   │            │
+#   │                                    ┌───────────────┴───┴──────────┐ │
+#   │                                    │     Kubernetes Services      │ │
+#   │                                    │  reviews-v1-svc, v2-svc     │ │
+#   │                                    └───────┬─────────────┬───────┘ │
+#   │                                            │             │         │
+#   │                                          80%           20%         │
+#   │                                            ▼             ▼         │
+#   │                                    ┌────────────┐ ┌────────┐      │
+#   │                                    │ v1 pods    │ │v2 pods │      │
+#   │                                    │ version=v1 │ │version=v2│    │
+#   │                                    └────────────┘ └────────┘      │
+#   │                                                                     │
+#   └─────────────────────────────────────────────────────────────────────┘
+#
+# ⚠️  KEY DIFFERENCE FROM VIRTUALSERVICE:
+#   Gateway API HTTPRoute does NOT use DestinationRule subsets.
+#   Instead, traffic splitting uses the "weight" field on backendRefs.
+#   You need separate Services per version:
+#     - reviews-v1-svc → selects pods with app=myapp, version=v1
+#     - reviews-v2-svc → selects pods with app=myapp, version=v2
+#
+# ============================================================================
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+
+metadata:
+  name: reviews-routing
+  namespace: traffic-demo
+
+spec:
+  # ═══════════════════════════════════════════════════════════════════════
+  # PARENT REFS - Which Gateway does this route attach to?
+  # ═══════════════════════════════════════════════════════════════════════
+  # Replaces VirtualService "gateways" field.
+  #
+  parentRefs:
+    - name: reviews-gateway
+      sectionName: http
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # HOSTNAMES - What domains does this HTTPRoute apply to?
+  # ═══════════════════════════════════════════════════════════════════════
+  # Replaces VirtualService "hosts" field.
+  # NOTE: This matches the SERVICE NAME, not the app label!
+  #
+  hostnames:
+    - reviews.example.com # External hostname for Gateway access
+
+  rules:
+    - backendRefs:
+        # ═══════════════════════════════════════════════════════════════
+        # BACKEND 1: Version 1 (80% of traffic)
+        # ═══════════════════════════════════════════════════════════════
+        - name: reviews-v1-svc # Per-version Service (replaces subset)
+          port: 80
+          weight: 80
+
+        # ═══════════════════════════════════════════════════════════════
+        # BACKEND 2: Version 2 (20% of traffic)
+        # ═══════════════════════════════════════════════════════════════
+        - name: reviews-v2-svc # Per-version Service (replaces subset)
+          port: 80
+          weight: 20
+
+      # ─────────────────────────────────────────────────────────────────
+      # TIMEOUTS: Gateway API native timeout support
+      # ─────────────────────────────────────────────────────────────────
+      timeouts:
+        request: 10s # Total time budget for request + all retries
+        backendRequest: 2s # Each attempt times out after 2 seconds
+
+# ============================================================================
+# 📊 TRAFFIC PROGRESSION EXAMPLES (Gateway API)
+# ============================================================================
+#
+# To change traffic split, update HTTPRoute backendRef weights:
+#
+#   # Increase canary to 50%
+#   kubectl patch httproute reviews-routing -n traffic-demo --type=merge -p '
+#   spec:
+#     rules:
+#     - backendRefs:
+#       - name: reviews-v1-svc
+#         port: 80
+#         weight: 50
+#       - name: reviews-v2-svc
+#         port: 80
+#         weight: 50'
+#
+#   # Full rollout to v2
+#   kubectl patch httproute reviews-routing -n traffic-demo --type=merge -p '
+#   spec:
+#     rules:
+#     - backendRefs:
+#       - name: reviews-v2-svc
+#         port: 80
+#         weight: 100'
+#
+#   # Rollback to v1
+#   kubectl patch httproute reviews-routing -n traffic-demo --type=merge -p '
+#   spec:
+#     rules:
+#     - backendRefs:
+#       - name: reviews-v1-svc
+#         port: 80
+#         weight: 100'
+#
+# ============================================================================

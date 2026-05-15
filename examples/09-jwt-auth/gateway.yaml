@@ -1,53 +1,52 @@
 # ============================================================================
-# GATEWAY & VIRTUALSERVICE: External Access for JWT Auth Demo
+# GATEWAY & HTTPROUTE: External Access for JWT Auth Demo (Gateway API)
 # ============================================================================
 # PURPOSE:
-#   Configure Istio Ingress Gateway to accept external HTTP traffic for
+#   Configure Kubernetes Gateway API to accept external HTTP traffic for
 #   testing JWT authentication. The RequestAuthentication policy will
 #   validate tokens at this entry point.
 #
 # JWT AUTH FLOW:
-#   External Client → Istio Ingress Gateway → [JWT VALIDATION] → httpbin
+#   External Client → Gateway (Gateway API) → HTTPRoute → httpbin
 #                          ↓                        ↓
 #                    Gateway Config          RequestAuthentication
 #                                            + AuthorizationPolicy
+#
+# NOTE: RequestAuthentication and AuthorizationPolicy are Istio-specific
+#   resources that work with Gateway API Gateways automatically.
 #
 # RELATED FILES:
 #   - requestauthentication.yaml: Defines JWT validation rules
 #   - authorizationpolicy.yaml: Enforces JWT requirement
 # ============================================================================
-apiVersion: networking.istio.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: httpbin-gateway
   namespace: jwt-demo
 spec:
-  selector:
-    istio: ingressgateway # Default Istio ingress gateway
-  servers:
-    - port:
-        number: 80
-        name: http
-        protocol: HTTP
-      hosts:
-        - "*" # Accept all hostnames for testing
+  gatewayClassName: istio
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same # Only allow routes from same namespace
 ---
 # ============================================================================
-# VIRTUAL SERVICE: Route traffic to httpbin
+# HTTP ROUTE: Route traffic to httpbin (Gateway API)
 # ============================================================================
-apiVersion: networking.istio.io/v1beta1
-kind: VirtualService
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: httpbin
   namespace: jwt-demo
 spec:
-  hosts:
-    - "*"
-  gateways:
-    - httpbin-gateway
-  http:
-    - route:
-        - destination:
-            host: httpbin
-            port:
-              number: 80
+  parentRefs:
+    - name: httpbin-gateway
+      sectionName: http
+  rules:
+    - backendRefs:
+        - name: httpbin
+          port: 80

@@ -2,12 +2,13 @@
 # ============================================================================
 # deploy-all.sh - Deploy the JWT Authentication demo
 # ============================================================================
-# Deploys httpbin + Gateway, then applies JWT validation and enforcement.
+# Deploys httpbin + Gateway API (Gateway + HTTPRoute), then applies JWT
+# validation and enforcement.
 #
 # WHAT GETS DEPLOYED:
 #   1. Namespace with Istio sidecar injection
 #   2. httpbin Deployment + Service (the protected API)
-#   3. Gateway + VirtualService (external access)
+#   3. Gateway + HTTPRoute (external access via Gateway API)
 #   4. RequestAuthentication (validates JWT signature and claims)
 #   5. AuthorizationPolicy (requires valid JWT for access)
 #
@@ -24,7 +25,7 @@ kubectl apply -f namespace.yaml
 # Step 2: Deploy httpbin (the service to be protected)
 kubectl apply -f deployment.yaml
 
-# Step 3: Deploy Gateway for external access
+# Step 3: Deploy Gateway API resources for external access
 kubectl apply -f gateway.yaml
 
 # Step 4: Wait for pods to be Ready

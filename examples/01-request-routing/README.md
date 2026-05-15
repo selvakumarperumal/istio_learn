@@ -7,7 +7,7 @@ Route traffic based on HTTP headers, paths, or query parameters. This is the fou
 
 ```mermaid
 flowchart LR
-    subgraph "Istio Ingress"
+    subgraph "Gateway API"
         GW[Gateway]
     end
     
@@ -53,8 +53,8 @@ flowchart LR
 | `deployment.yaml` | v1, v2, v3 app deployments |
 | `service.yaml` | Kubernetes service |
 | `destination-rule.yaml` | Subset definitions |
-| `virtual-service.yaml` | Routing rules |
-| `gateway.yaml` | Ingress gateway config |
+| `httproute.yaml` | HTTPRoute routing rules (Gateway API) |
+| `gateway.yaml` | Gateway API gateway config |
 
 ## Testing
 
@@ -71,17 +71,17 @@ curl -H "Host: reviews.example.com" -H "x-user-type: internal" $GATEWAY_URL/vers
 
 ## Key Concepts
 
-### VirtualService Match Rules
+### HTTPRoute Match Rules
 ```yaml
-http:
-  - match:
+rules:
+  - matches:
       - headers:
-          x-user-type:
-            exact: beta    # Exact header match
-    route:
-      - destination:
-          host: reviews-svc
-          subset: v2
+          - name: x-user-type
+            type: Exact
+            value: beta
+    backendRefs:
+      - name: reviews-v2-svc
+        port: 80
 ```
 
 ### Match Priority

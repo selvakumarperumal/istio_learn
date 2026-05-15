@@ -1,5 +1,5 @@
 # ============================================================================
-# ISTIO GATEWAY: EXTERNAL ACCESS POINT
+# KUBERNETES GATEWAY API: EXTERNAL ACCESS POINT
 # ============================================================================
 #
 # 📌 What is this file?
@@ -7,32 +7,33 @@
 # A Gateway configures a load balancer operating at the edge of the mesh.
 # It's the entry point for external traffic into the service mesh.
 #
-# 🚪 Gateway vs Kubernetes Ingress:
-# ----------------------------------
+# 🚪 Istio Gateway vs Kubernetes Gateway API:
+# ---------------------------------------------
 #
 # ┌─────────────────────────────────────────────────────────────────────────┐
 # │                                                                         │
-# │   Kubernetes Ingress:                Istio Gateway:                    │
-# │   ───────────────────                ──────────────                    │
+# │   Istio Gateway (OLD):               Kubernetes Gateway API (NEW):     │
+# │   ───────────────────                ──────────────────────────────    │
 # │                                                                         │
 # │   ┌─────────────────┐               ┌─────────────────┐                │
-# │   │    Ingress      │               │    Gateway      │                │
-# │   │  (L7 routing)   │               │  (L4-L7 config) │──┐             │
-# │   │                 │               └─────────────────┘  │             │
-# │   │  path: /api     │               + VirtualService     │             │
-# │   │  backend: svc   │               ┌─────────────────┐  │             │
-# │   │                 │               │ VirtualService  │──┘             │
-# │   │  All-in-one     │               │ (L7 routing)    │                │
+# │   │    Gateway      │               │    Gateway      │                │
+# │   │  (L4-L7 config) │──┐            │  (K8s standard) │──┐             │
+# │   └─────────────────┘  │            └─────────────────┘  │             │
+# │   + VirtualService     │            + HTTPRoute           │             │
+# │   ┌─────────────────┐  │            ┌─────────────────┐  │             │
+# │   │ VirtualService  │──┘            │   HTTPRoute     │──┘             │
+# │   │ (L7 routing)    │               │ (L7 routing)    │                │
 # │   └─────────────────┘               └─────────────────┘                │
 # │                                                                         │
-# │   ✗ Limited features                ✓ Full Istio features              │
-# │   ✗ Controller-dependent            ✓ More flexible                    │
-# │                                     ✓ mTLS, traffic splitting          │
+# │   ✗ Istio-specific                  ✓ Standard Kubernetes API          │
+# │   ✗ Vendor lock-in                  ✓ Portable across implementations │
+# │                                     ✓ Role-oriented design             │
+# │                                     ✓ Supported by Istio 1.15+        │
 # │                                                                         │
 # └─────────────────────────────────────────────────────────────────────────┘
 #
-# 🔄 How Gateway Works with VirtualService:
-# ------------------------------------------
+# 🔄 How Gateway API Works:
+# --------------------------
 #
 # ┌─────────────────────────────────────────────────────────────────────────┐
 # │                                                                         │
@@ -42,21 +43,14 @@
 # │      │                                                                  │
 # │      ▼                                                                  │
 # │   ┌──────────────────────────────────────────────────────────────────┐ │
-# │   │  LoadBalancer Service (istio-ingressgateway)                     │ │
-# │   │  - External IP assigned by cloud provider or Minikube tunnel     │ │
-# │   │  - Receives all external traffic                                 │ │
-# │   └──────────────────────────────┬───────────────────────────────────┘ │
-# │                                  │                                      │
-# │                                  ▼                                      │
-# │   ┌──────────────────────────────────────────────────────────────────┐ │
 # │   │  Gateway Resource (THIS FILE)                                    │ │
-# │   │  - Configures which hosts/ports to accept                        │ │
-# │   │  - "I'll accept traffic for reviews.example.com on port 80"      │ │
+# │   │  - gatewayClassName: istio (Istio provisions the proxy)          │ │
+# │   │  - listeners: port 80, HTTP, hostname *.example.com              │ │
 # │   └──────────────────────────────┬───────────────────────────────────┘ │
 # │                                  │                                      │
 # │                                  ▼                                      │
 # │   ┌──────────────────────────────────────────────────────────────────┐ │
-# │   │  VirtualService                                                  │ │
+# │   │  HTTPRoute                                                       │ │
 # │   │  - Defines routing rules                                         │ │
 # │   │  - "Route to v1 (80%) and v2 (20%)"                              │ │
 # │   └──────────────────────────────┬───────────────────────────────────┘ │
@@ -72,60 +66,55 @@
 #
 # ============================================================================
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 
 metadata:
-  name: reviews-gateway # Gateway name (referenced by VirtualService)
+  name: reviews-gateway # Gateway name (referenced by HTTPRoute parentRefs)
   namespace: traffic-demo # Namespace for this resource
 
 spec:
   # ═══════════════════════════════════════════════════════════════════════
-  # SELECTOR - Which gateway pods should implement this config?
+  # GATEWAY CLASS - Which implementation should handle this Gateway?
   # ═══════════════════════════════════════════════════════════════════════
   #
-  # This selector identifies the Istio ingress gateway deployment
-  # The label "istio: ingressgateway" matches our installed gateway
+  # gatewayClassName replaces the old Istio "selector" approach.
+  # Setting it to "istio" tells Kubernetes to use Istio as the
+  # Gateway API implementation, which automatically provisions
+  # the required Envoy proxy/load balancer.
   #
   # ┌─────────────────────────────────────────────────────────────────────┐
   # │                                                                     │
-  # │   Our Gateway resource          istio-ingressgateway pod           │
-  # │   ─────────────────────         ────────────────────────           │
+  # │   OLD (Istio Gateway):          NEW (Gateway API):                 │
+  # │   ───────────────────          ──────────────────                  │
   # │                                                                     │
-  # │   selector:                      metadata:                          │
-  # │     istio: ingressgateway  ──────>  labels:                        │
-  # │                                       istio: ingressgateway        │
-  # │                                                                     │
-  # │   "This config applies to pods with label istio=ingressgateway"    │
+  # │   selector:                     gatewayClassName: istio             │
+  # │     istio: ingressgateway                                          │
+  # │                                 Istio auto-provisions the proxy    │
+  # │   "Find pods with that label"   "Istio handles everything"         │
   # │                                                                     │
   # └─────────────────────────────────────────────────────────────────────┘
   #
-  selector:
-    istio: ingressgateway # Match the default Istio ingress gateway
+  gatewayClassName: istio
 
   # ═══════════════════════════════════════════════════════════════════════
-  # SERVERS - Define which ports/protocols this gateway handles
+  # LISTENERS - Define which ports/protocols/hosts this gateway handles
   # ═══════════════════════════════════════════════════════════════════════
   #
-  # Each server entry configures a port listener
+  # Each listener configures a port and what traffic to accept.
+  # This replaces the old "servers" array.
   #
-  servers:
+  listeners:
     # ─────────────────────────────────────────────────────────────────────
-    # HTTP SERVER (Port 80)
+    # HTTP LISTENER (Port 80)
     # ─────────────────────────────────────────────────────────────────────
-    #
-    # Accepts HTTP traffic on port 80
-    #
-    - port:
-        number: 80 # Port number to listen on
-        name: http # Name for this port (for identification)
-        protocol: HTTP # Protocol (HTTP, HTTPS, GRPC, TCP, etc.)
+    - name: http # Listener name (HTTPRoute references via sectionName)
+      port: 80 # Port number to listen on
+      protocol: HTTP # Protocol (HTTP, HTTPS, TLS, TCP)
 
       # ─────────────────────────────────────────────────────────────────────
-      # HOSTS - Which hostnames does this server accept?
+      # HOSTNAME - Which hostnames does this listener accept?
       # ─────────────────────────────────────────────────────────────────────
-      #
-      # The hosts this gateway will accept traffic for
       #
       # ┌─────────────────────────────────────────────────────────────────┐
       # │                                                                 │
@@ -137,31 +126,37 @@ spec:
       # │   "*.example.com"                                               │
       # │    └── Wildcard - any subdomain of example.com                 │
       # │                                                                 │
-      # │   "*"                                                           │
+      # │   (omitted)                                                     │
       # │    └── Accept all hosts (useful for testing)                   │
       # │                                                                 │
       # └─────────────────────────────────────────────────────────────────┘
       #
-      hosts:
-        - reviews.example.com # Accept traffic for this hostname
-        - "*" # Also accept all hosts (for testing)
-          # In production, remove "*" and only
-          # list specific hostnames
+      hostname: "*.example.com" # Accept traffic for subdomains
+
+      # ─────────────────────────────────────────────────────────────────────
+      # ALLOWED ROUTES - Which namespaces can attach HTTPRoutes?
+      # ─────────────────────────────────────────────────────────────────────
+      allowedRoutes:
+        namespaces:
+          from: Same # Only allow HTTPRoutes from the same namespace
 # ============================================================================
 # HTTPS/TLS CONFIGURATION (Optional - for production)
 # ============================================================================
 #
-# To enable HTTPS, add another server entry:
+# To enable HTTPS, add another listener:
 #
-#   - port:
-#       number: 443
-#       name: https
-#       protocol: HTTPS
-#     hosts:
-#       - reviews.example.com
+#   - name: https
+#     port: 443
+#     protocol: HTTPS
+#     hostname: reviews.example.com
 #     tls:
-#       mode: SIMPLE                    # or MUTUAL for mTLS from clients
-#       credentialName: reviews-cert    # Secret containing TLS certificate
+#       mode: Terminate
+#       certificateRefs:
+#         - kind: Secret
+#           name: reviews-cert
+#     allowedRoutes:
+#       namespaces:
+#         from: Same
 #
 # The Secret should contain:
 #   - tls.crt: Server certificate
@@ -171,6 +166,6 @@ spec:
 #   kubectl create secret tls reviews-cert \
 #     --cert=server.crt \
 #     --key=server.key \
-#     -n istio-system
+#     -n traffic-demo
 #
 # ============================================================================

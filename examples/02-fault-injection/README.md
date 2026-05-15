@@ -82,7 +82,7 @@ kubectl apply -f fault-combined.yaml   # Both delay + abort
 |------|-------------|
 | `namespace.yaml` | Creates `fault-demo` namespace with Istio sidecar injection enabled |
 | `deployment.yaml` | Deploys httpbin app (Deployment + Service) |
-| `gateway.yaml` | Configures Istio Ingress Gateway for external access |
+| `gateway.yaml` | Gateway API Gateway + HTTPRoute for external access |
 | `fault-delay.yaml` | Injects 5s delay on 50% of requests |
 | `fault-abort.yaml` | Returns HTTP 503 on 50% of requests |
 | `fault-combined.yaml` | 30% delayed (3s) + 20% aborted (503) |
@@ -93,10 +93,10 @@ kubectl apply -f fault-combined.yaml   # Both delay + abort
 ## Testing
 
 ```bash
-# Set up gateway URL (Minikube)
-NODE_PORT=$(kubectl get svc -n istio-ingress istio-ingressgateway \
-  -o jsonpath='{.spec.ports[?(@.name=="http2")].nodePort}')
-GATEWAY_URL="http://$(minikube ip):$NODE_PORT"
+# Get Gateway API URL
+GATEWAY_IP=$(kubectl get gateway httpbin-gateway -n fault-demo \
+  -o jsonpath='{.status.addresses[0].value}')
+GATEWAY_URL="http://$GATEWAY_IP"
 
 # Test delay (some requests should take ~5s)
 for i in $(seq 1 10); do

@@ -15,10 +15,16 @@
 
 echo "=== Retries and Timeouts Test ==="
 
-# Discover the Gateway URL (Minikube NodePort)
-NODE_PORT=$(kubectl get svc -n istio-ingress istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="http2")].nodePort}')
-MINIKUBE_IP=$(minikube ip)
-GATEWAY_URL="http://$MINIKUBE_IP:$NODE_PORT"
+# Get Gateway API URL
+GATEWAY_IP=$(kubectl get gateway httpbin-gateway -n retry-demo -o jsonpath='{.status.addresses[0].value}' 2>/dev/null)
+if [ -n "$GATEWAY_IP" ]; then
+    GATEWAY_URL="http://$GATEWAY_IP"
+else
+    GW_SVC=$(kubectl get svc -n retry-demo -l gateway.networking.k8s.io/gateway-name=httpbin-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    NODE_PORT=$(kubectl get svc -n retry-demo "$GW_SVC" -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}' 2>/dev/null)
+    MINIKUBE_IP=$(minikube ip 2>/dev/null)
+    GATEWAY_URL="http://$MINIKUBE_IP:$NODE_PORT"
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TEST 1: Timeout — request takes 15s but timeout is 10s

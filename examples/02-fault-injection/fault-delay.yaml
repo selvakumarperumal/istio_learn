@@ -68,11 +68,10 @@ spec:
   # ─────────────────────────────────────────────────────────────────────────
   # GATEWAYS: Where traffic originates from
   # ─────────────────────────────────────────────────────────────────────────
-  # - httpbin-gateway → external traffic entering via Istio Ingress Gateway
-  # - mesh            → internal traffic between services in the mesh
-  # Including both ensures faults are injected regardless of traffic source
+  # External traffic is now handled by Gateway API (gateway.yaml → HTTPRoute).
+  # This VirtualService applies fault injection only to mesh-internal traffic.
+  # Istio's fault injection is a mesh-level feature not available in Gateway API.
   gateways:
-    - httpbin-gateway # External traffic (defined in gateway.yaml)
     - mesh # Internal mesh traffic (built-in keyword)
 
   # ─────────────────────────────────────────────────────────────────────────

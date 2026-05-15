@@ -10,8 +10,8 @@
 #   2. Deployments: reviews-v1, reviews-v2, reviews-v3
 #   3. Service: reviews-svc (selects all versions via app=reviews label)
 #   4. DestinationRule: defines v1, v2, v3 subsets
-#   5. VirtualService: header-based routing rules
-#   6. Gateway: external access via Istio Ingress Gateway
+#   5. HTTPRoute: header-based routing rules (Gateway API)
+#   6. Gateway: external access via Kubernetes Gateway API
 #
 # AFTER DEPLOYMENT:
 #   Run ./test.sh to verify header-based routing
@@ -43,7 +43,7 @@ kubectl wait --for=condition=Ready pods --all -n routing-demo --timeout=120s
 # Gateway enables external access
 echo -e "\n5. Applying Istio resources..."
 kubectl apply -f destination-rule.yaml
-kubectl apply -f virtual-service.yaml
+kubectl apply -f httproute.yaml
 kubectl apply -f gateway.yaml
 
 echo -e "\n=== Deployment Complete ==="

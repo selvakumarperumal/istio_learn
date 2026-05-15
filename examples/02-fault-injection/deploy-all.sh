@@ -6,12 +6,12 @@
 #   1. Creates the "fault-demo" namespace with Istio sidecar injection enabled
 #   2. Deploys the httpbin application (Deployment + Service)
 #   3. Waits for all pods to be Ready (including Envoy sidecar)
-#   4. Configures the Istio Ingress Gateway for external access
+#   4. Configures the Kubernetes Gateway API for external access
 #   5. Applies the delay fault injection VirtualService by default
 #
 # PREREQUISITES:
 #   - Kubernetes cluster running (e.g., minikube, kind, GKE)
-#   - Istio installed with ingress gateway deployed
+#   - Istio installed with Gateway API CRDs
 #   - kubectl configured to access the cluster
 #   - Run from this directory (02-fault-injection/)
 #
@@ -48,7 +48,7 @@ echo -e "\n3. Waiting for pods..."
 kubectl wait --for=condition=Ready pods --all -n fault-demo --timeout=120s
 
 # Step 4: Apply the Gateway resource
-# This configures the Istio Ingress Gateway to accept traffic for httpbin
+# This configures the Gateway API Gateway and HTTPRoute for external access
 echo -e "\n4. Applying gateway..."
 kubectl apply -f gateway.yaml
 

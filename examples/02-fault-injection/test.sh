@@ -20,17 +20,20 @@ set -e
 
 echo "=== Fault Injection Test ==="
 
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 1: Discover the Gateway URL
-# ─────────────────────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────────────────
+# Determine Gateway URL (Gateway API)
+# ────────────────────────────────────────────────────────────────────────────
 GATEWAY_URL=""
-EXTERNAL_IP=$(kubectl get svc -n istio-ingress istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
 
-if [ -n "$EXTERNAL_IP" ] && [ "$EXTERNAL_IP" != "null" ]; then
-    GATEWAY_URL="http://$EXTERNAL_IP"
-    echo "Using LoadBalancer IP: $GATEWAY_URL"
+GATEWAY_IP=$(kubectl get gateway httpbin-gateway -n fault-demo -o jsonpath='{.status.addresses[0].value}' 2>/dev/null)
+
+if [ -n "$GATEWAY_IP" ]; then
+    GATEWAY_URL="http://$GATEWAY_IP"
+    echo "Using Gateway API IP: $GATEWAY_URL"
 else
-    NODE_PORT=$(kubectl get svc -n istio-ingress istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="http2")].nodePort}' 2>/dev/null)
+    # Fallback: Get the auto-provisioned gateway Service via NodePort (Minikube)
+    GW_SVC=$(kubectl get svc -n fault-demo -l gateway.networking.k8s.io/gateway-name=httpbin-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    NODE_PORT=$(kubectl get svc -n fault-demo "$GW_SVC" -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}' 2>/dev/null)
     MINIKUBE_IP=$(minikube ip 2>/dev/null)
     if [ -n "$NODE_PORT" ] && [ -n "$MINIKUBE_IP" ]; then
         GATEWAY_URL="http://$MINIKUBE_IP:$NODE_PORT"
