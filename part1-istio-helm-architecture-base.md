@@ -468,7 +468,7 @@ Controls how requests are routed to services:
 
 ```yaml
 # Example: Route 80% traffic to v1, 20% to v2
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-route
@@ -510,7 +510,7 @@ Defines policies after routing decisions:
 
 ```yaml
 # Example: Define subsets and load balancing
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews-destination
@@ -534,7 +534,7 @@ Manages inbound/outbound traffic at mesh edge:
 
 ```yaml
 # Example: HTTP Gateway
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-gateway
@@ -556,7 +556,7 @@ Controls mutual TLS between services:
 
 ```yaml
 # Example: Enforce strict mTLS
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default

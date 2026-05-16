@@ -37,7 +37,7 @@
 #   - requestauthentication.yaml: Configures JWT validation rules
 #   - deployment.yaml: httpbin service that is protected
 # ============================================================================
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: require-jwt

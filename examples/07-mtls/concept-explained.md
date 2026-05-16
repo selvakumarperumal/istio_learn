@@ -110,7 +110,7 @@ Envoy A                                    Envoy B
 ### STRICT Mode: "Papers, please!"
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 spec:
   mtls:
@@ -127,7 +127,7 @@ Legacy App (no sidecar)  → Service B: ❌ REJECTED (no cert!)
 ### PERMISSIVE Mode: "Show ID if you have one"
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 spec:
   mtls:

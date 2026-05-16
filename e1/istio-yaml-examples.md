@@ -81,7 +81,7 @@ metadata:
 
 ```yaml
 # http-gateway.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-gateway
@@ -103,7 +103,7 @@ spec:
 
 ```yaml
 # https-gateway.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: secure-gateway
@@ -135,7 +135,7 @@ spec:
 
 ```yaml
 # multi-protocol-gateway.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: multi-protocol-gateway
@@ -174,7 +174,7 @@ spec:
 
 ```yaml
 # basic-virtualservice.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-route
@@ -194,7 +194,7 @@ spec:
 
 ```yaml
 # canary-virtualservice.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-canary
@@ -225,7 +225,7 @@ spec:
 
 ```yaml
 # rewrite-redirect-virtualservice.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-routes
@@ -257,7 +257,7 @@ spec:
 
 ```yaml
 # advanced-matching-virtualservice.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: advanced-routing
@@ -303,7 +303,7 @@ spec:
 
 ```yaml
 # timeout-retry-virtualservice.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: timeout-retry-config
@@ -325,7 +325,7 @@ spec:
 
 ```yaml
 # fault-injection-virtualservice.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: fault-injection
@@ -360,7 +360,7 @@ spec:
 
 ```yaml
 # cors-virtualservice.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-cors
@@ -401,7 +401,7 @@ spec:
 
 ```yaml
 # basic-destinationrule.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews-destination
@@ -426,7 +426,7 @@ spec:
 
 ```yaml
 # advanced-loadbalancing-destinationrule.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: advanced-lb
@@ -455,7 +455,7 @@ spec:
 
 ```yaml
 # circuit-breaker-destinationrule.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: circuit-breaker
@@ -480,7 +480,7 @@ spec:
 
 ```yaml
 # tls-destinationrule.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: tls-destination
@@ -499,7 +499,7 @@ spec:
 
 ```yaml
 # subset-policies-destinationrule.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: subset-policies
@@ -535,7 +535,7 @@ spec:
 
 ```yaml
 # external-http-serviceentry.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -554,7 +554,7 @@ spec:
 
 ```yaml
 # external-database-serviceentry.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-database
@@ -579,7 +579,7 @@ spec:
 
 ```yaml
 # internal-service-serviceentry.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: internal-vm-service
@@ -609,7 +609,7 @@ spec:
 
 ```yaml
 # wildcard-serviceentry.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: wildcard-external
@@ -632,7 +632,7 @@ spec:
 
 ```yaml
 # ab-testing.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: ab-testing
@@ -653,7 +653,7 @@ spec:
             host: web-frontend
             subset: variant-a
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: ab-testing-destination
@@ -672,7 +672,7 @@ spec:
 
 ```yaml
 # blue-green-deployment.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: blue-green
@@ -690,7 +690,7 @@ spec:
             subset: blue
           weight: 0
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: blue-green-destination
@@ -709,7 +709,7 @@ spec:
 
 ```yaml
 # traffic-mirroring.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: traffic-mirror
@@ -733,7 +733,7 @@ spec:
 
 ```yaml
 # header-routing.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: header-routing
@@ -771,7 +771,7 @@ spec:
 
 ```yaml
 # mtls-strict.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -785,7 +785,7 @@ spec:
 
 ```yaml
 # namespace-mtls.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: namespace-policy
@@ -799,7 +799,7 @@ spec:
 
 ```yaml
 # workload-mtls.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: reviews-mtls
@@ -819,7 +819,7 @@ spec:
 
 ```yaml
 # jwt-authentication.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: jwt-auth
@@ -840,7 +840,7 @@ spec:
 
 ```yaml
 # authz-policy-allow.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-specific-users
@@ -868,7 +868,7 @@ spec:
 
 ```yaml
 # authz-policy-deny.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-external-access
@@ -888,7 +888,7 @@ spec:
 
 ```yaml
 # authz-policy-custom.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: custom-authz
@@ -917,7 +917,7 @@ spec:
 
 ```yaml
 # combined-auth.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: combined-jwt
@@ -930,7 +930,7 @@ spec:
     - issuer: "https://auth.example.com"
       jwksUri: "https://auth.example.com/.well-known/jwks.json"
 ---
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: require-jwt
@@ -1043,7 +1043,7 @@ spec:
 
 ```yaml
 # sidecar-optimization.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -1061,7 +1061,7 @@ spec:
 
 ```yaml
 # workload-sidecar.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: reviews-sidecar
@@ -1086,7 +1086,7 @@ spec:
 
 ```yaml
 # multi-cluster-gateway.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: cross-cluster-gateway
@@ -1145,7 +1145,7 @@ spec:
 
 ```yaml
 # session-affinity.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: session-affinity
@@ -1171,7 +1171,7 @@ spec:
             subset: v2
           weight: 20
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: session-affinity-dr
@@ -1196,7 +1196,7 @@ spec:
 
 ```yaml
 # locality-lb.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: locality-lb
@@ -1221,7 +1221,7 @@ spec:
 
 ```yaml
 # egress-gateway.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: egress-gateway
@@ -1239,7 +1239,7 @@ spec:
       tls:
         mode: PASSTHROUGH
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: direct-through-egress
@@ -1275,7 +1275,7 @@ spec:
               number: 443
           weight: 100
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api

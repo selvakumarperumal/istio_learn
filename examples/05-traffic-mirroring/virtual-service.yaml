@@ -27,7 +27,7 @@
 #   - destination-rule.yaml : Defines v1 and v2 subsets
 #   - deployment.yaml       : v1 (production) and v2 (canary) pods
 # ============================================================================
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: httpbin-mirror

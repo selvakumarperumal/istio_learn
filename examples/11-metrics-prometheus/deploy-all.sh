@@ -32,11 +32,11 @@ echo "=== Deploying Prometheus/Grafana ==="
 
 # Step 1: Install Prometheus (metrics collection)
 echo -e "\n1. Installing Prometheus..."
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/prometheus.yaml
 
 # Step 2: Install Grafana (metrics visualization with pre-built dashboards)
 echo -e "\n2. Installing Grafana..."
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/grafana.yaml
 
 # Step 3: Wait for pods to be Ready
 echo -e "\n3. Waiting for pods..."

@@ -35,7 +35,7 @@ sequenceDiagram
 
 ### RequestAuthentication (JWT Validation)
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: jwt-auth
@@ -50,7 +50,7 @@ spec:
 
 ### AuthorizationPolicy (Require JWT)
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: require-jwt

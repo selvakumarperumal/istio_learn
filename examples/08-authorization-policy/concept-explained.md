@@ -38,7 +38,7 @@ Without authorization policies, a compromised frontend pod can directly access y
 ### Step 1: Deny ALL Traffic (Lock Everything)
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-all
@@ -58,7 +58,7 @@ EVERYTHING → ANYTHING: ❌ DENIED
 ### Step 2: Allow ONLY Specific Traffic
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-frontend-to-orders
@@ -203,7 +203,7 @@ Namespace: authz-demo
 ### Policies:
 ```yaml
 # Policy 1: Deny everything by default
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-all
@@ -212,7 +212,7 @@ spec: {}
 
 ---
 # Policy 2: Frontend can call orders (GET only)
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-frontend-to-orders
@@ -231,7 +231,7 @@ spec:
 
 ---
 # Policy 3: Orders can call database
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-orders-to-database

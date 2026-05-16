@@ -157,7 +157,7 @@ Result: 401 Unauthorized (stopped at Envoy, never reaches httpbin)
 ### RequestAuthentication: "Who do we trust?"
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: jwt-auth
@@ -173,7 +173,7 @@ spec:
 ### AuthorizationPolicy: "What claims are required?"
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: require-jwt

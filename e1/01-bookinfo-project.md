@@ -217,7 +217,7 @@ spec:
 Save as `bookinfo-gateway.yaml`:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: bookinfo-gateway
@@ -233,7 +233,7 @@ spec:
     hosts:
     - "*"
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: bookinfo
@@ -267,7 +267,7 @@ spec:
 Save as `bookinfo-destination-rules.yaml`:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: productpage
@@ -279,7 +279,7 @@ spec:
     labels:
       version: v1
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews
@@ -297,7 +297,7 @@ spec:
     labels:
       version: v3
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: ratings
@@ -309,7 +309,7 @@ spec:
     labels:
       version: v1
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: details
@@ -360,7 +360,7 @@ echo "http://${GATEWAY_URL}/productpage"
 Save as `reviews-v1.yaml`:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews
@@ -385,7 +385,7 @@ kubectl apply -f reviews-v1.yaml
 Save as `reviews-user-based.yaml`:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews
@@ -419,7 +419,7 @@ kubectl apply -f reviews-user-based.yaml
 Save as `reviews-canary.yaml`:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews
@@ -449,7 +449,7 @@ kubectl apply -f reviews-canary.yaml
 Save as `ratings-delay.yaml`:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: ratings
@@ -487,7 +487,7 @@ kubectl apply -f ratings-delay.yaml
 Save as `ratings-abort.yaml`:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: ratings
@@ -525,7 +525,7 @@ kubectl apply -f ratings-abort.yaml
 Save as `reviews-timeout.yaml`:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews
@@ -554,7 +554,7 @@ kubectl apply -f reviews-timeout.yaml
 Save as `reviews-retry.yaml`:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews
@@ -628,7 +628,7 @@ for i in {1..50}; do
 done
 
 # Install fortio for advanced load testing
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/httpbin/sample-client/fortio-deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/httpbin/sample-client/fortio-deploy.yaml
 
 # Run load test
 FORTIO_POD=$(kubectl get pods -n demo -l app=fortio -o jsonpath='{.items[0].metadata.name}')

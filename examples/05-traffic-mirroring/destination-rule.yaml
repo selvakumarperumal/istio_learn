@@ -16,7 +16,7 @@
 #   - deployment.yaml       : Defines pods with version=v1 and version=v2 labels
 #   - virtual-service.yaml  : Uses these subsets for routing and mirroring
 # ============================================================================
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: httpbin

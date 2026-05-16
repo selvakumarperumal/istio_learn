@@ -34,7 +34,7 @@ flowchart LR
 
 ### Deny All (Default Deny)
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-all
@@ -43,7 +43,7 @@ spec: {}    # Empty spec = deny all
 
 ### Allow Specific Source
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-frontend
@@ -59,7 +59,7 @@ spec:
 
 ### Allow Specific Methods/Paths
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-read

@@ -35,7 +35,7 @@
 #   - peerauthentication-permissive.yaml: Migration mode (accepts both)
 #   - deployment.yaml: httpbin + sleep to test mTLS between pods
 # ============================================================================
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default # "default" applies to ALL pods in namespace

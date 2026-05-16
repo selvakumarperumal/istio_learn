@@ -64,7 +64,7 @@ If v2 breaks at any step → instantly revert to 100% v1 ✅
 ### VirtualService (The Traffic Split):
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 spec:
   http:
@@ -84,7 +84,7 @@ spec:
 ### DestinationRule (The Subsets):
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 spec:
   host: reviews-svc

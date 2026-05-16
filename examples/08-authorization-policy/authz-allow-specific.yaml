@@ -44,7 +44,7 @@
 #   - authz-deny-all.yaml: Blocks all traffic by default
 #   - deployment.yaml: Creates ServiceAccounts for httpbin and sleep
 # ============================================================================
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-sleep

@@ -53,7 +53,7 @@ spec:
       serviceAccountName: httpbin # Critical! Gives this pod its identity
       containers:
         - name: httpbin
-          image: kennethreitz/httpbin
+          image: kong/httpbin
           ports:
             - containerPort: 80
           resources:

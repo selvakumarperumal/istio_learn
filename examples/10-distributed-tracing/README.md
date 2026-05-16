@@ -56,7 +56,7 @@ Apps must propagate these headers for tracing to work:
 
 ```bash
 # Install Jaeger addon
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/jaeger.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/jaeger.yaml
 ```
 
 ## Sampling Rate

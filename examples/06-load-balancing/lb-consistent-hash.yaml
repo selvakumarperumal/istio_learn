@@ -37,7 +37,7 @@
 # RELATED FILES:
 #   - deployment.yaml: Deploys 3 replicas for hash distribution
 # ============================================================================
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: httpbin-consistent-hash

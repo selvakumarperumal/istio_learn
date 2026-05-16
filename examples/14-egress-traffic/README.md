@@ -39,7 +39,7 @@ flowchart LR
 
 ### Register External Service
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: google
@@ -56,7 +56,7 @@ spec:
 
 ### Route Through Egress Gateway
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: google-egress

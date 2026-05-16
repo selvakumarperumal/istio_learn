@@ -35,7 +35,7 @@
 #   - authz-allow-specific.yaml: Opens access for specific service accounts
 #   - deployment.yaml: httpbin + sleep with ServiceAccounts
 # ============================================================================
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-all

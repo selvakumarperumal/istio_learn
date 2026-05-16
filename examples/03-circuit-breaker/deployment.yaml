@@ -43,7 +43,7 @@ spec:
     spec:
       containers:
         - name: httpbin
-          image: kennethreitz/httpbin
+          image: kong/httpbin
           ports:
             - containerPort: 80
           # ──────────────────────────────────────────────────────────────────

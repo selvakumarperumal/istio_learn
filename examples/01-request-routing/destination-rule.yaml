@@ -13,7 +13,7 @@
 #   - virtual-service.yaml: Uses these subsets in routing rules
 #   - deployment.yaml: Pods with version labels v1, v2, v3
 # ============================================================================
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews-destination

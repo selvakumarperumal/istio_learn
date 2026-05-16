@@ -65,7 +65,7 @@ Pod → anything.com       ❌ Blocked!
 Now you must register each external service with a **ServiceEntry**:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: stripe-api
@@ -91,7 +91,7 @@ Pod → evil-server.com    ❌ Blocked (not registered)
 A ServiceEntry tells Istio: "This external service exists and is allowed."
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: httpbin-external

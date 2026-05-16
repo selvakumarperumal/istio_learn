@@ -64,7 +64,7 @@
 #   - fault-combined.yaml : Both delay AND abort together
 # ============================================================================
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: httpbin-abort

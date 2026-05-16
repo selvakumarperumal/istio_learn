@@ -29,7 +29,7 @@
 # RELATED FILES:
 #   - deployment.yaml: Deploys 3 replicas to observe random distribution
 # ============================================================================
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: httpbin-random

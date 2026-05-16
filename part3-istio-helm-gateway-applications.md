@@ -237,7 +237,7 @@ kubectl get namespace bookinfo --show-labels
 
 ```bash
 # Download and apply Bookinfo manifests
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.21/samples/bookinfo/platform/kube/bookinfo.yaml -n bookinfo
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/bookinfo/platform/kube/bookinfo.yaml -n bookinfo
 
 # Wait for pods to be ready
 kubectl get pods -n bookinfo -w
@@ -259,7 +259,7 @@ reviews-v3-xxxxx-xxxxx           2/2     Running   0          2m
 
 ```yaml
 # Save as bookinfo-gateway.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: bookinfo-gateway
@@ -286,7 +286,7 @@ kubectl apply -f bookinfo-gateway.yaml
 
 ```yaml
 # Save as bookinfo-virtualservice.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: bookinfo
@@ -367,7 +367,7 @@ graph LR
 
 ```yaml
 # Save as destination-rule-reviews.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews
@@ -388,7 +388,7 @@ spec:
 
 ```yaml
 # Save as virtualservice-reviews-v1.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews
@@ -415,7 +415,7 @@ kubectl apply -f virtualservice-reviews-v1.yaml
 
 ```yaml
 # Save as virtualservice-reviews-canary.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews
@@ -464,7 +464,7 @@ Route based on request headers (useful for testing):
 
 ```yaml
 # Save as virtualservice-reviews-header.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews
@@ -502,7 +502,7 @@ Introduce delays to test how your app handles slow responses:
 
 ```yaml
 # Save as virtualservice-ratings-delay.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: ratings
@@ -590,7 +590,7 @@ By default, Istio uses "PERMISSIVE" mode (accepts both plaintext and mTLS). For 
 
 ```yaml
 # Save as peer-authentication.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -695,7 +695,7 @@ kubectl label namespace bookinfo istio-injection=enabled --overwrite
 
 # 2. Deploy application
 echo "Deploying Bookinfo..."
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.21/samples/bookinfo/platform/kube/bookinfo.yaml -n bookinfo
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/bookinfo/platform/kube/bookinfo.yaml -n bookinfo
 
 # 3. Wait for pods
 echo "Waiting for pods to be ready..."
@@ -703,7 +703,7 @@ kubectl wait --for=condition=Ready pods --all -n bookinfo --timeout=120s
 
 # 4. Create Gateway and VirtualService
 cat <<EOF | kubectl apply -f -
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: bookinfo-gateway
@@ -719,7 +719,7 @@ spec:
       hosts:
         - "*"
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: bookinfo

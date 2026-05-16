@@ -43,7 +43,7 @@ spec:
     spec:
       containers:
         - name: httpbin
-          image: kennethreitz/httpbin # Popular HTTP testing image
+          image: kong/httpbin # Popular HTTP testing image
           ports:
             - containerPort: 80 # Default HTTP port
           # ──────────────────────────────────────────────────────────────────

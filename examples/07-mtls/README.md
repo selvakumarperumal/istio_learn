@@ -38,7 +38,7 @@ flowchart LR
 
 ### Namespace-wide mTLS
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -50,7 +50,7 @@ spec:
 
 ### Mesh-wide mTLS
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -62,7 +62,7 @@ spec:
 
 ### Per-workload mTLS
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: httpbin-mtls

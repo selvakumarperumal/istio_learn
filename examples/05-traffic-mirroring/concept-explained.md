@@ -134,7 +134,7 @@ This helps you identify mirrored traffic in v2's logs.
 ## 🔧 Configuration
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 spec:
   http:

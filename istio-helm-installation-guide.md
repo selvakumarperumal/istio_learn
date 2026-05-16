@@ -1,6 +1,6 @@
 # Istio Installation Guide with Helm
 
-> **Version**: This guide uses **Istio 1.28.3** (Latest as of February 2026)
+> **Version**: This guide uses **Istio 1.29.0** (Latest as of February 2026)
 >
 > **Reference**: [Official Istio Helm Installation Documentation](https://istio.io/latest/docs/setup/install/helm/)
 
@@ -98,7 +98,7 @@ A running Kubernetes cluster is the foundation for Istio. Istio runs as a set of
 # Verify your cluster is running and accessible
 kubectl cluster-info
 
-# Check Kubernetes version (Istio 1.28 supports K8s 1.28-1.32)
+# Check Kubernetes version (Istio 1.29 supports K8s 1.29-1.32)
 kubectl version --short
 ```
 
@@ -166,11 +166,11 @@ helm search repo istio
 **Expected output:**
 ```
 NAME                    CHART VERSION   APP VERSION     DESCRIPTION
-istio/base              1.28.3          1.28.3          Helm chart for deploying Istio cluster resources...
-istio/istiod            1.28.3          1.28.3          Helm chart for istio control plane
-istio/gateway           1.28.3          1.28.3          Helm chart for deploying Istio gateways
-istio/cni               1.28.3          1.28.3          Helm chart for istio-cni components
-istio/ztunnel           1.28.3          1.28.3          Helm chart for istio ztunnel components
+istio/base              1.29.0          1.29.0          Helm chart for deploying Istio cluster resources...
+istio/istiod            1.29.0          1.29.0          Helm chart for istio control plane
+istio/gateway           1.29.0          1.29.0          Helm chart for deploying Istio gateways
+istio/cni               1.29.0          1.29.0          Helm chart for istio-cni components
+istio/ztunnel           1.29.0          1.29.0          Helm chart for istio ztunnel components
 ```
 
 **Understanding the Helm Charts:**
@@ -269,7 +269,7 @@ CRDs (Custom Resource Definitions) extend Kubernetes with new resource types. Af
 ```bash
 helm install istio-base istio/base \
   -n istio-system \
-  --version 1.28.3 \
+  --version 1.29.0 \
   --set defaultRevision=default \
   --wait
 ```
@@ -282,7 +282,7 @@ helm install istio-base istio/base \
 | `istio-base` | Release name | Used for `helm ls`, upgrades, uninstalls |
 | `istio/base` | Chart name | From the `istio` repository we added |
 | `-n istio-system` | Target namespace | Where resources will be created |
-| `--version 1.28.3` | Chart version | Ensures reproducible installations |
+| `--version 1.29.0` | Chart version | Ensures reproducible installations |
 | `--set defaultRevision=default` | Set the default revision | Required for webhook configuration |
 | `--wait` | Wait for completion | Command blocks until resources are ready |
 
@@ -295,7 +295,7 @@ helm ls -n istio-system
 
 # Expected output:
 # NAME        NAMESPACE     REVISION  STATUS    CHART         APP VERSION
-# istio-base  istio-system  1         deployed  base-1.28.3   1.28.3
+# istio-base  istio-system  1         deployed  base-1.29.0   1.29.0
 ```
 
 **Check CRDs are installed:**
@@ -362,7 +362,7 @@ kubectl get crd | grep istio
 ```bash
 helm install istiod istio/istiod \
   -n istio-system \
-  --version 1.28.3 \
+  --version 1.29.0 \
   --wait
 ```
 
@@ -374,7 +374,7 @@ helm install istiod istio/istiod \
 | `istiod` | Release name | Used for `helm ls`, upgrades, uninstalls |
 | `istio/istiod` | Chart name | The control plane chart |
 | `-n istio-system` | Target namespace | Same namespace as istio-base |
-| `--version 1.28.3` | Chart version | Match the same version as istio-base |
+| `--version 1.29.0` | Chart version | Match the same version as istio-base |
 | `--wait` | Wait for completion | Ensures istiod is running before continuing |
 
 **Verify installation:**
@@ -466,7 +466,7 @@ kubectl label namespace istio-ingress istio-injection=enabled
 # Install the gateway
 helm install istio-ingressgateway istio/gateway \
   -n istio-ingress \
-  --version 1.28.3 \
+  --version 1.29.0 \
   --wait
 ```
 
@@ -478,7 +478,7 @@ helm install istio-ingressgateway istio/gateway \
 | `istio-ingressgateway` | Release name | Descriptive name for this gateway |
 | `istio/gateway` | Chart name | Generic gateway chart (can be used for ingress or egress) |
 | `-n istio-ingress` | Target namespace | Separate from control plane |
-| `--version 1.28.3` | Chart version | Match other Istio components |
+| `--version 1.29.0` | Chart version | Match other Istio components |
 | `--wait` | Wait for completion | Ensures gateway is ready before continuing |
 
 **Verify installation:**
@@ -785,7 +785,7 @@ kubectl get mutatingwebhookconfiguration istio-sidecar-injector -o yaml
 
 ```bash
 # Upgrade istio-base to match istiod version
-helm upgrade istio-base istio/base -n istio-system --version 1.28.3
+helm upgrade istio-base istio/base -n istio-system --version 1.29.0
 
 # If upgrade fails due to ownership issues, clean and reinstall:
 # WARNING: This deletes all Istio resources!
@@ -1130,13 +1130,13 @@ resources:
 ### One-Line Installation
 
 ```bash
-# Complete installation in one go (Istio 1.28.3)
+# Complete installation in one go (Istio 1.29.0)
 kubectl create namespace istio-system && \
-helm install istio-base istio/base -n istio-system --version 1.28.3 --set defaultRevision=default --wait && \
-helm install istiod istio/istiod -n istio-system --version 1.28.3 --wait && \
+helm install istio-base istio/base -n istio-system --version 1.29.0 --set defaultRevision=default --wait && \
+helm install istiod istio/istiod -n istio-system --version 1.29.0 --wait && \
 kubectl create namespace istio-ingress && \
 kubectl label namespace istio-ingress istio-injection=enabled && \
-helm install istio-ingressgateway istio/gateway -n istio-ingress --version 1.28.3 --wait
+helm install istio-ingressgateway istio/gateway -n istio-ingress --version 1.29.0 --wait
 ```
 
 ### One-Line Uninstallation
